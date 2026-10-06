@@ -131,6 +131,43 @@ module.exports = async function redesignAudit(mainWindow, output) {
     await click('.local-zoom-board');
     check('keyboard collapsed', await evaluate('!document.body.classList.contains("local-board-expanded") && document.querySelector(".local-zoom-board").getAttribute("aria-pressed")==="false"'));
 
+    // Inspect secondary panels, not just their parent page. Block any accidental
+    // native assignment while proving that an old palette button cannot forward.
+    await navigate(0);
+    await evaluate(`window.thunder68Presentation.selectKeys(['Esc'])`); await pause(150);
+    await evaluate(`window.__auditOldKey=[...document.querySelectorAll('.local-function-key')].find(b=>b.textContent==='A')`);
+    const subtab = async label => {
+      await evaluate(`(() => {const b=[...document.querySelectorAll('.local-settings-panel .tab-navigation button')].find(b=>b.textContent.trim()===${JSON.stringify(label)});if(!b)throw Error('Missing subtab');b.click();})()`);
+      await pause(200);
+    };
+    await subtab('组合键');
+    const stale = await evaluate(`(() => {
+      let nativeClicks=0;const root=document.querySelector('#root');
+      const block=e=>{nativeClicks++;e.preventDefault();e.stopImmediatePropagation();};
+      root.addEventListener('click',block,true);
+      try{window.__auditOldKey.click();}finally{root.removeEventListener('click',block,true);delete window.__auditOldKey;}
+      const r=document.querySelector('.buttonComposition').getBoundingClientRect();
+      return {nativeClicks,compositionVisible:r.width>0&&r.height>0};
+    })()`);
+    check('stale palette never forwards to another category',stale.nativeClicks===0,stale);
+    check('combination modifiers and apply remain visible',stale.compositionVisible);
+    for(const label of ['多媒体键','灯效键','宏']){
+      await subtab(label);
+      const layout=await geometry();
+      check(`${label}: no internal horizontal clipping`,!layout.panelOverflow.length,layout.panelOverflow);
+      if(label!=='宏')check(`${label}: readable action labels`,await evaluate(`[...document.querySelectorAll('.local-action-tile>span')].every(n=>n.clientWidth>=70&&getComputedStyle(n).textOverflow!=='ellipsis')`));
+    }
+    await navigate(3);
+    check('advanced descriptions have readable width',await evaluate(`[...document.querySelectorAll('.local-super-card')].length===6&&[...document.querySelectorAll('.local-super-card>div')].every(n=>n.getBoundingClientRect().width>170)`));
+    await navigate(4);
+    check('game categories do not consume a full column height',await evaluate(`document.querySelector('.game-profile-toolbar').getBoundingClientRect().height<100`));
+    await navigate(2);
+    mainWindow.setSize(1024,720);await pause(350);
+    await evaluate(`document.querySelector('.main-content').scrollTop=500`);await pause(200);
+    check('scrolled selection never covers header or title',await evaluate(`!!document.elementFromPoint(800,28)?.closest('.local-header')&&!!document.elementFromPoint(300,90)?.closest('.local-page-heading')`));
+    await capture('redesign-compact-scrolled.png');
+    await evaluate(`document.querySelector('.main-content').scrollTop=0`);
+
     for (const choice of ['dark','light']) {
       await theme(choice);
       for (const [width,height] of [[1400,940],[1920,1080],[1024,720]]) {

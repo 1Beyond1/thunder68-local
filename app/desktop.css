@@ -150,3 +150,44 @@ body[data-local-page="1"] #root .rightpart>div:has(>.colorplate){display:flex!im
 #root .color_board>div>span:last-child{margin-left:0!important}
 body[data-local-page="1"] #root .rightpart>div:last-child{flex-wrap:wrap}
 body[data-local-page="1"]{--board-extra:150px}
+
+/* Secondary controls use the same readable spacing as the main workspace. */
+.local-header,.local-page-heading,.local-footer{z-index:5}
+#root .local-action-catalog{height:auto!important;min-height:0!important;justify-content:flex-start!important;align-items:stretch!important;gap:20px!important}
+#root .local-action-grid{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:8px;width:100%!important}
+#root .local-action-tile{width:100%!important;height:auto!important;min-height:74px;margin:0!important;font-size:12px!important;gap:5px}
+#root .local-action-tile>div{width:100%!important;height:42px!important;align-items:center;justify-content:center;background:var(--ui-raised);border-color:var(--ui-line)!important}
+#root .local-action-tile img{width:24px!important;height:24px!important;object-fit:contain}
+:root[data-theme=dark] #root .local-action-tile img{filter:brightness(0) invert(1);opacity:.85}
+#root .local-action-tile>span{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;font-size:12px!important;line-height:1.5!important;background:transparent!important;padding:0!important}
+#root .local-super-catalog{display:flex!important;flex-direction:column!important;gap:10px}
+#root .local-super-card{width:100%!important;min-height:90px;padding:14px!important;margin:0!important;gap:12px;align-items:flex-start!important}
+#root .local-super-card>img{width:30px!important;flex-shrink:0;margin:0!important}
+#root .local-super-card>div{min-width:0;flex:1}
+#root .local-super-card>div>div:first-child{font-size:14px!important;font-weight:600;margin-bottom:5px}
+#root .local-super-card>div>div:last-child{font-size:12px!important;line-height:1.8!important;color:var(--ui-muted)!important}
+#root .game-profile-toolbar{width:100%!important;min-width:0!important;height:auto!important;flex:none!important;display:block!important;border:0!important;padding:0!important;margin:0!important}
+#root .game-profile-tabs{width:100%!important;height:auto!important;display:flex!important;flex-direction:row!important;flex-wrap:wrap;gap:8px;padding:0 0 12px!important;border:0!important;border-bottom:1px solid var(--ui-line)!important}
+#root .game-profile-tab{width:auto!important;height:36px!important;margin:0!important;padding:6px 14px!important;border:0!important;color:var(--ui-muted)!important}
+#root .game-profile-tab.active{background:var(--ui-raised)!important;color:var(--ui-text)!important;border-radius:4px}
+#root .game-profile-grid{width:100%!important;display:grid!important;grid-template-columns:repeat(auto-fill,minmax(200px,1fr))!important;gap:16px!important;align-content:start;flex:1;min-height:0;padding:0!important}
+#root .game-profile-card{margin:0!important;color:var(--ui-text)!important;--gp-card-bg:var(--ui-raised)}
+body[data-local-page="5"] #root .local-settings-panel>.tab-navigation+div{justify-content:flex-start!important;flex:none!important;height:auto!important;padding:4px 12px!important}
+body[data-local-page="5"] #root .local-settings-panel>.tab-navigation+div>div{width:100%!important;max-width:720px;font-size:14px!important}
+#root .disablegroup{gap:16px 24px!important;margin-bottom:12px}
+#root .radiogroup{gap:18px!important;margin-bottom:12px}
+#root .local-settings-panel:before{line-height:1.7}
+body[data-local-page="2"] #root .rightpart button{white-space:nowrap;flex-shrink:0}
+body[data-local-page="2"] #root .rightpart input[type=range]{min-width:60px!important}
+.local-custom-palette.local-combination #root .local-settings-panel>.tab-navigation+div{display:block!important;opacity:1;pointer-events:auto;height:auto!important;flex:none!important}
+.local-combination #root .local-settings-panel>.tab-navigation+div>div{height:auto!important;justify-content:flex-start!important}
+#root .buttonComposition{flex-direction:column!important;align-items:flex-start!important;gap:14px!important;margin:0!important;padding:0 0 14px!important;border-bottom:1px solid var(--ui-line)}
+#root .buttonComposition>div{flex-wrap:wrap;gap:12px!important;font-size:12px}
+#root .buttonComposition button{margin:0!important;padding:6px 16px!important}
+.local-combination #root .buttonComposition+div{display:none!important}
+#root .local-settings-panel[data-local-tab="宏"]>.tab-navigation+div{height:auto!important;flex:none!important}
+#root .local-settings-panel[data-local-tab="宏"]>.tab-navigation+div>div{height:auto!important;justify-content:flex-start!important;align-items:stretch!important}
+#root .local-settings-panel[data-local-tab="宏"]>.tab-navigation+div>div>div{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(50px,1fr));gap:8px;justify-content:start!important}
+#root .local-settings-panel[data-local-tab="宏"]>.tab-navigation+div>div>div>div{width:100%!important;height:42px!important;margin:0!important;font-size:13px!important}
+:root[data-theme=dark] #root .local-settings-panel[data-local-tab="宏"] img{filter:brightness(0) invert(1)}
+#root .local-action-tile[aria-disabled=true]{opacity:.55}

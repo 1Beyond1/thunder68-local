@@ -37,7 +37,7 @@
       <section class="local-welcome"><article class="local-connect-card"><div class="local-card-heading"><span class="local-model">THUNDER <b>68</b></span><span class="local-usb-tag">USB 有线</span></div><div class="local-home-board" aria-label="雷电68键盘布局"></div><div class="local-connect-card-bottom"><div><h2>雷电68</h2><p>68 键布局 · 磁轴键盘</p></div><button class="local-connect-button">连接键盘 <span>→</span></button></div></article><aside class="local-connect-guide"><h2>开始配置</h2><ol><li><b>连接键盘</b><p>使用 USB 线将键盘连接到电脑。</p></li><li><b>建立连接</b><p>点击“连接键盘”，读取当前配置。</p></li><li><b>调整手感</b><p>配置按键、灯光与触发行程。</p></li></ol><div class="local-guide-note">连接失败时，先断开官网驱动中的连接，再重试。</div></aside></section>
       <section class="local-board-overlay"><div class="local-board-title"><b>THUNDER 68 <span>当前键盘</span></b><button class="local-zoom-board" aria-pressed="false">放大键盘</button></div><div class="local-live-board"></div><div class="local-selection"><div class="local-selection-summary"><span class="local-selection-label">未选择按键</span><button class="local-clear-selection">清除</button></div><div class="local-selection-shortcuts"><button data-select="WASD">WASD</button><button data-select="字母键">字母</button><button data-select="全选">全选</button><button data-select="反选">反选</button></div><button class="local-reset-keys">恢复默认…</button></div><div class="local-key-chips" aria-label="已选按键"></div><p class="local-board-instruction">点击选择按键；再次点击取消。参数调整作用于全部已选按键。</p></section>
       <section class="local-palette"><div class="local-palette-toolbar"><label class="local-search-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg><input type="search" placeholder="搜索按键，如 Esc、空格、F1" aria-label="搜索可分配按键"></label><span class="local-palette-count"></span></div><div class="local-palette-grid"></div><div class="local-search-empty" hidden>没有找到匹配按键，试试其他名称。</div></section>
-      <footer class="local-footer"><span class="local-operation" role="status" aria-live="polite">连接键盘后读取当前配置</span><button class="local-verify" hidden>重新读取核对</button><span>本地驱动 <span class="local-footer-separator">·</span> 0.2.0</span></footer>`;
+      <footer class="local-footer"><span class="local-operation" role="status" aria-live="polite">连接键盘后读取当前配置</span><button class="local-verify" hidden>重新读取核对</button><span>本地驱动 <span class="local-footer-separator">·</span> 0.2.1</span></footer>`;
     document.body.appendChild(shell);
     const themeControl=shell.querySelector('#local-theme'), media=matchMedia('(prefers-color-scheme: dark)');
     let themeChoice='system';try{themeChoice=localStorage.getItem('thunder68.theme')||'system';}catch{}
@@ -152,14 +152,15 @@
     function positionOverlay(element,rect,insets) {
       if(!rect?.width)return;
       const [left,top,right,bottom]=insets;
-      const style=`left:${rect.x+left}px;top:${rect.y+top}px;width:${rect.width-left-right}px;height:${rect.height-top-bottom}px;`;
+      const x=rect.x+left,y=rect.y+top,width=Math.max(0,rect.width-left-right),height=Math.max(0,rect.height-top-bottom);
+      const style=`left:${x}px;top:${y}px;width:${width}px;height:${height}px;clip-path:inset(${Math.min(height,Math.max(0,148-y))}px 0 ${Math.min(height,Math.max(0,y+height-(innerHeight-42)))}px 0);`;
       if(element.getAttribute('style')!==style)element.setAttribute('style',style);
     }
     function updateOverlays(){
       const stage=root.querySelector('.local-keyboard-stage');
       if(stage)positionOverlay(shell.querySelector('.local-board-overlay'),stage.getBoundingClientRect(),[20,18,20,18]);
       const panel=root.querySelector('.local-settings-panel');
-      if(panel){const rect=panel.getBoundingClientRect(),nav=panel.querySelector('.tab-navigation')?.getBoundingClientRect();positionOverlay(palette,rect,[20,nav?nav.bottom-rect.y+18:110,20,20]);}
+      if(panel){const rect=panel.getBoundingClientRect(),nav=(panel.querySelector('.buttonComposition')||panel.querySelector('.tab-navigation'))?.getBoundingClientRect();positionOverlay(palette,rect,[20,nav?nav.bottom-rect.y+18:110,20,20]);}
       drawParameters();
     }
     window.addEventListener('resize',updateOverlays);
@@ -186,7 +187,7 @@
     shell.querySelector('.local-device-link').addEventListener('click', returnToDevices);
     for (const button of shell.querySelectorAll('[data-page]')) button.addEventListener('click', () => {
       const tab = tabs[Number(button.dataset.page)];
-      if (tab) {tab.click(); synchronize();}
+      if (tab) {tab.click();const main=root.querySelector('.main-content');if(main)main.scrollTop=0;synchronize();}
     });
     const paper = new Set(['white', '#fff', '#ffffff', 'rgb(255, 255, 255)', 'rgb(242, 244, 245)', 'rgb(254, 254, 254)', 'rgb(238, 238, 238)']);
     const muted = new Set(['rgb(217, 217, 217)', 'rgb(196, 196, 196)', 'rgb(221, 221, 221)', 'rgb(204, 204, 204)', 'rgb(153, 153, 153)', 'rgb(243, 243, 243)']);
@@ -195,6 +196,13 @@
     const mark = (node, key, value) => {if (node.dataset[key] !== value) node.dataset[key] = value;};
     const classify = node => {
       if (node.closest('.colorplate,.color-slider,.color_board')) return;
+      if(node.tagName==='IMG' && node.title && node.parentElement?.nextElementSibling?.tagName==='SPAN'){
+        const tile=node.parentElement.parentElement;
+        tile.classList.add('local-action-tile');tile.parentElement.classList.add('local-action-grid');tile.parentElement.parentElement.classList.add('local-action-catalog');
+      }
+      if(node.tagName==='IMG' && ['DKS','SOCD','MT','TGL','MPT','END'].includes(node.alt) && node.parentElement.style.width==='30%'){
+        node.parentElement.classList.add('local-super-card');node.parentElement.parentElement.classList.add('local-super-catalog');
+      }
       if(!node.children.length && node.tagName==='SPAN'){
         const descriptions={'按键在按压到固定位置后触发，回弹到固定位置后释放。触发行程越低，物理响应越快，但更容易误触触发按键所需要的按下的距离':'按下多深才触发。数值越小，触发越快，也更容易误触。','通过动态地触发和重置按键，实现更快的按键操作。当您意图按下或释放按键时，快速触发会立即触发按键的动作，并在达到触发点后自动重置按键。这样可以减少按键的延迟和提高响应速度。':'根据按键的移动距离触发与复位，不必回到固定位置。适合需要连续快速按键的操作。','灵敏度决定了按键抬起（重置）和再次按下按键（触发）所需的键程':'再次按下或抬起多少距离才响应。数值越小越灵敏。','独立的上收/下击灵敏度':'分别设置按下与抬起','如果启用，您可以单独定义快速触发的按下（触发）和抬起（重置）的灵敏度。':'开启后，可分别调整按下触发和抬起复位的距离。'};
         const replacement=descriptions[node.textContent];if(replacement){node.textContent=replacement;mark(node,'localDescription','true');}
@@ -258,8 +266,20 @@
         for(const part of main.querySelectorAll('.leftpart'))part.parentElement.classList.add('local-field-columns');
         if(index===1){const lightTab=[...main.querySelectorAll('button')].find(e=>e.textContent.trim()==='主键灯');if(lightTab){lightTab.parentElement.classList.add('local-light-tabs');if(lightTab.parentElement.parentElement!==main.querySelector('.local-settings-panel'))lightTab.parentElement.parentElement.classList.add('local-light-layout');}}
         const selection=state?.config?.mapPendingKey || [];
+        for(const tile of main.querySelectorAll('.local-action-tile')){
+          tile.inert=!selection.length||!!state?.config?.mask||!deviceOpened;
+          tile.setAttribute('aria-disabled',String(tile.inert));
+        }
+        const combinationApply=main.querySelector('.buttonComposition button');
+        if(combinationApply)combinationApply.disabled=!selection.length||!!state?.config?.mask||!deviceOpened;
         const panel=main.querySelector('.local-settings-panel');
-        if(panel){panel.dataset.selectionContext=interactive?(selection.length?`编辑 ${selection.length} 个按键 · 调整后直接发送`:'先在键盘上选择要修改的按键'):'调整键盘的全局设置';}
+        if(panel){
+          panel.dataset.localTab=panel.querySelector('.tab-navigation button.active')?.textContent.trim()||'';
+          document.body.classList.toggle('local-combination',index===0 && panel.dataset.localTab==='组合键');
+          const values=state?.config?.keyValues?.filter(key=>selection.includes(key.id))||[];
+          const mixed=index===2 && new Set(values.map(key=>JSON.stringify([key.travelValue,key.isRTEnabled,key.sensitivity,key.triggerSensitivity,key.resetSensitivity,key.isIndependentSensitivity]))).size>1;
+          panel.dataset.selectionContext=interactive?(selection.length?`编辑 ${selection.length} 个按键 · ${mixed?'当前值不同，调整将统一所选按键':'调整后直接发送'}`:'先在键盘上选择要修改的按键'):'调整键盘的全局设置';
+        }
         for(const fields of main.querySelectorAll('.local-field-columns'))fields.inert=(index===2 && !selection.length)||!!state?.config?.mask||!deviceOpened;
         document.body.classList.toggle('local-disconnected',!deviceOpened);
         const chips=shell.querySelector('.local-key-chips');
@@ -285,7 +305,9 @@
         shell.querySelector('.local-clear-selection').disabled=!selection.length;
         const nativePalette=[...root.querySelectorAll('[data-local-control=key]')].filter(node=>node.textContent.trim());
         document.body.classList.toggle('local-custom-palette',index===0 && nativePalette.length>30);
-        if(nativePalette.length>30 && (nativePalette.length!==paletteNodes.length || nativePalette[0]!==paletteNodes[0])){
+        const paletteTab=panel?.dataset.localTab||'';
+        if(nativePalette.length>30 && (palette.dataset.tab!==paletteTab || nativePalette.length!==paletteNodes.length || nativePalette[0]!==paletteNodes[0])){
+          palette.dataset.tab=paletteTab;
           paletteNodes=nativePalette;
           const grid=palette.querySelector('.local-palette-grid');grid.replaceChildren();
           const groups=['字母与数字','功能与修饰键','符号与小键盘'].map(label=>{const section=document.createElement('section');section.className='local-function-group';const heading=document.createElement('h3');heading.textContent=label;const keys=document.createElement('div');section.append(heading,keys);grid.appendChild(section);return keys;});
@@ -295,7 +317,13 @@
             const name=native.textContent.replace(/\s+/g,' ').trim(),flat=name.replace(/\s/g,'');
             const button=document.createElement('button');button.type='button';button.className='local-function-key';button.textContent=shortNames[flat]||name;
             if(/^[^\w]?\d$/.test(flat))button.textContent=flat.slice(-1);
-            button.dataset.search=(name+' '+(name==='Space'?'空格':name==='Enter'?'回车':name==='Backspace'?'退格':name==='Ctrl'?'控制':name==='Shift'?'换挡':'')).toLowerCase();button.title=`分配为 ${name}`;button.addEventListener('click',()=>native.click());
+            button.dataset.search=(name+' '+(name==='Space'?'空格':name==='Enter'?'回车':name==='Backspace'?'退格':name==='Ctrl'?'控制':name==='Shift'?'换挡':'')).toLowerCase();button.title=`分配为 ${name}`;button.addEventListener('click',()=>{
+              const active=root.querySelector('.local-settings-panel .tab-navigation button.active')?.textContent.trim();
+              if(active!==paletteTab || !native.isConnected || !window.thunder68Presentation.state()?.config?.mapPendingKey?.length){
+                feedback('界面已切换，请在当前分类重新选择功能。');synchronize();return;
+              }
+              native.click();
+            });
             const repeat=seenNames.get(flat)||0;seenNames.set(flat,repeat+1);
             if(repeat && /^[0-9]$/.test(flat))button.textContent=`Num ${flat}`;
             else if(repeat && /^(Ctrl|Alt|Shift|Win)$/.test(flat)){button.textContent=`${flat} R`;button.title=`分配为右 ${flat}`;}
