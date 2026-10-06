@@ -1,0 +1,15 @@
+node_modules/
+release/
+data/
+output/
+research/decoded.js
+research/official-main.js
+app/vendor/
+app/keyboard-layout.json
+research/*.zip
+research/decode.cjs
+.env
+.env.*
+*.log
+*.pem
+*.key

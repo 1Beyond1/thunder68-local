@@ -1,0 +1,17 @@
+{
+  "name": "thunder68-local",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal offline desktop wrapper for DAREU Thunder68's official WebHID configurator",
+  "main": "app/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "sync": "node scripts/sync-official.cjs",
+    "build": "node scripts/build-portable.cjs",
+    "test": "node --test tests/*.test.cjs",
+    "audit:package": "node scripts/audit-package.cjs"
+  },
+  "devDependencies": {
+    "electron": "^44.5.1"
+  }
+}
