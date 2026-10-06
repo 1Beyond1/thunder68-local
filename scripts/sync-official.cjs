@@ -72,5 +72,5 @@ async function download(urlPath) {
   }
   await fs.writeFile(path.join(root, 'manifest.json'), JSON.stringify({source: origin + '/thunder68', capturedAt: new Date().toISOString(), files: manifest, failed}, null, 2));
   console.log(JSON.stringify({downloaded: manifest.length, failed}, null, 2));
-  if (failed.some(f => /\.(css|js)$/.test(f.path))) process.exitCode = 1;
+  if (failed.length) process.exitCode = 1;
 })().catch(error => {console.error(error); process.exitCode = 1;});

@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const emit = detail => window.thunder68Local?.diagnostic(detail);
+  const emit = detail => {window.thunder68Local?.diagnostic(detail);window.dispatchEvent(new CustomEvent('thunder68-feedback',{detail}));};
   window.addEventListener('error', e => emit({event: 'page-error', message: e.message}));
   window.addEventListener('unhandledrejection', e => emit({event: 'page-rejection', message: String(e.reason)}));
   let sent = 0, received = 0;

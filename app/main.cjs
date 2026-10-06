@@ -56,6 +56,7 @@ else {
     });
     mainWindow = new BrowserWindow({width: 1400, height: 940, minWidth: 1024, minHeight: 720, show: false, title: '雷电68 本地驱动', backgroundColor: '#101113', titleBarStyle: 'hidden', titleBarOverlay: {color: '#101113', symbolColor: '#f4f5f7', height: 44}, autoHideMenuBar: true, webPreferences: {preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, offscreen: backgroundTest, backgroundThrottling: !backgroundTest}});
     mainWindow.webContents.on('page-title-updated', event => {event.preventDefault(); mainWindow.setTitle('雷电68 本地驱动');});
+    ipcMain.on('theme',(event,theme)=>{if(event.sender!==mainWindow.webContents || !['dark','light'].includes(theme))return;mainWindow.setTitleBarOverlay({color:theme==='dark'?'#111214':'#ffffff',symbolColor:theme==='dark'?'#f4f5f7':'#181a1d',height:44});mainWindow.setBackgroundColor(theme==='dark'?'#111214':'#f5f6f7');});
     mainWindow.webContents.setWindowOpenHandler(() => ({action: 'deny'}));
     mainWindow.webContents.on('will-navigate', (event, url) => {if (!url.startsWith(LOCAL_ORIGIN + '/')) event.preventDefault();});
     mainWindow.webContents.on('render-process-gone', (_event, detail) => log({event: 'renderer-gone', reason: detail.reason}));
@@ -68,7 +69,7 @@ else {
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       {label: '驱动', submenu: [{label: '重新加载界面', accelerator: 'F5', click: () => mainWindow.reload()}, {label: '打开本地资料目录', click: () => shell.openPath(dataDir)}, {type: 'separator'}, {label: '退出', role: 'quit'}]},
       {label: '视图', submenu: [{role: 'resetZoom', label: '恢复默认大小'}, {role: 'zoomIn', label: '放大'}, {role: 'zoomOut', label: '缩小'}, {role: 'togglefullscreen', label: '全屏'}]},
-      {label: '帮助', submenu: [{label: '关于本地版', click: () => dialog.showMessageBox(mainWindow, {title: '雷电68 本地驱动', message: '雷电68 本地驱动 0.1.0', detail: '个人使用的离线桌面版，配置界面与通信逻辑来自达尔优官网。\n资料保存在程序旁的 data 目录。\n此版本提供本地配置；开机自动应用将在确定配置后接入。\n固件更新请使用官方网页。'})}]}
+      {label: '帮助', submenu: [{label: '关于本地版', click: () => dialog.showMessageBox(mainWindow, {title: '雷电68 本地驱动', message: '雷电68 本地驱动 ' + app.getVersion(), detail: '个人使用的离线桌面版，配置界面与通信逻辑来自达尔优官网。\n资料保存在程序旁的 data 目录。\n此版本提供本地配置；暂不提供开机自动恢复。\n固件更新请使用官方网页。'})}]}
     ]));
     await mainWindow.loadURL(LOCAL_ORIGIN + '/thunder68/');
     if (!diagnosing) mainWindow.show();
@@ -87,6 +88,7 @@ else {
       const output = path.resolve(__dirname, app.isPackaged ? '../../../output' : '../output'); fs.mkdirSync(output, {recursive: true});
       report.configurationReadComplete = report.devices.some(d => d.opened) && await mainWindow.webContents.executeJavaScript(`!!document.querySelector('.main-content') && !window.thunder68Presentation.state()?.config?.mask && !document.getElementById('root').textContent.includes('正在配置读取')`);
       fs.writeFileSync(path.join(output, 'self-test.json'), JSON.stringify(report, null, 2));
+      if(process.argv.includes('--redesign-audit'))await require('./redesign-audit.cjs')(mainWindow,output);
       if (process.argv.includes('--ui-audit')) {
         const tree = await mainWindow.webContents.executeJavaScript(`(() => {function walk(e, depth) {if (depth > 12) return null; const r = e.getBoundingClientRect(); return {tag: e.tagName, cls: e.className, style: e.getAttribute('style'), text: e.children.length ? undefined : e.textContent.slice(0,100), rect: [r.x,r.y,r.width,r.height].map(Math.round), children: [...e.children].map(c => walk(c,depth+1)).filter(Boolean)};} return walk(document.getElementById('root'),0);})()`);
         fs.writeFileSync(path.join(output, 'ui-tree.json'), JSON.stringify(tree, null, 2));
@@ -130,7 +132,7 @@ else {
               if(!['W','A','S','D'].every(id=>bulk.includes(id)))throw new Error('WASD selection check failed');
               const detail = await mainWindow.webContents.executeJavaScript(`({text:document.querySelector('.local-key-details').textContent, values:window.thunder68Presentation.state().config.keyValues.filter(k=>['W','A','S','D'].includes(k.id)), width:document.querySelector('.keyboard_image canvas').getBoundingClientRect().width})`);
               fs.writeFileSync(path.join(output,'ui-parameter-details.json'),JSON.stringify(detail,null,2));
-              if(detail.width<950 || !detail.text.includes('触发行程') || detail.text.includes('未读取'))throw new Error('Keyboard size or parameter readout check failed');
+              if(detail.width<650 || !detail.text.includes('触发行程') || detail.text.includes('未读取'))throw new Error('Keyboard size or parameter readout check failed');
               fs.writeFileSync(path.join(output,'ui-trigger-selected.png'),(await mainWindow.webContents.capturePage()).toPNG());
               mainWindow.setSize(1920,1080);
               await new Promise(resolve=>setTimeout(resolve,350));

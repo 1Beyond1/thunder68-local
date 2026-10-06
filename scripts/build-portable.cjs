@@ -19,4 +19,7 @@ delete pkg.devDependencies; delete pkg.scripts;
 fs.writeFileSync(path.join(resources, 'package.json'), JSON.stringify(pkg, null, 2));
 fs.copyFileSync(path.join(root, 'README.md'), path.join(target, '使用说明.md'));
 fs.copyFileSync(path.join(root, 'DEVELOPMENT.md'), path.join(target, '开发说明.md'));
+// Keep Electron's LICENSE intact and label the independently authored code separately.
+fs.copyFileSync(path.join(root, 'LICENSE'), path.join(target, 'PROJECT-LICENSE'));
+fs.copyFileSync(path.join(root, 'THIRD_PARTY_NOTICES.md'), path.join(target, 'THIRD_PARTY_NOTICES.md'));
 console.log(path.join(target, 'Thunder68-Local.exe'));
