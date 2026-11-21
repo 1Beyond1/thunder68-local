@@ -1,0 +1,320 @@
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const helpers = require('../app/shell-helpers.js');
+
+// Minimal DOM node helper for structural + i18n selector tests without external deps
+function el(tag, {cls = '', text = '', attrs = {}, children = []} = {}) {
+  const node = {
+    tagName: tag.toUpperCase(),
+    className: cls,
+    _text: text,
+    attrs: {...attrs},
+    children: [],
+    parentElement: null,
+    get textContent() {
+      return this.children.length ? this.children.map(c => c.textContent).join('') : this._text;
+    },
+    get nextElementSibling() {
+      if (!this.parentElement) return null;
+      const idx = this.parentElement.children.indexOf(this);
+      return idx >= 0 ? this.parentElement.children[idx + 1] || null : null;
+    },
+    getAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(this.attrs, name) ? this.attrs[name] : null;
+    },
+    matches(selector) {
+      if (selector.startsWith('.')) {
+        return this.className.split(/\s+/).includes(selector.slice(1));
+      }
+      return this.tagName.toLowerCase() === selector.toLowerCase();
+    },
+    querySelectorAll(selector) {
+      const results = [];
+      const walk = current => {
+        for (const child of current.children) {
+          if (child.matches(selector)) results.push(child);
+          walk(child);
+        }
+      };
+      walk(this);
+      return results;
+    },
+    querySelector(selector) {
+      return this.querySelectorAll(selector)[0] || null;
+    }
+  };
+  for (const child of children) {
+    child.parentElement = node;
+    node.children.push(child);
+  }
+  return node;
+}
+
+test('findTabbarInMain and findExitButton work in Chinese, English, and structural fallback', () => {
+  for (const [labels, exitLabel] of [
+    [[' 按键定义', '灯效设置', '快速触发', '超级按键', '游戏配置', '其他设置'], '返回设备列表'],
+    [['KeyMapping', 'LightEffect', 'QuickTrigger', 'AdvancedKey', 'GameProfile', 'Settings'], 'Exit'],
+    [['TabA', 'TabB', 'TabC', 'TabD', 'TabE', 'TabF'], 'Salir']
+  ]) {
+    const tabItems = labels.map((label, i) =>
+      el('div', {children: [el('img', {attrs: {src: `/t/${i}.png`}}), el('span', {text: label})]})
+    );
+    const exitItem = el('div', {children: [el('span', {text: exitLabel})]});
+    const tabbar = el('div', {children: [...tabItems, exitItem]});
+    const main = el('div', {cls: 'main-content', children: [tabbar]});
+    const root = el('div', {children: [main]});
+
+    assert.equal(helpers.findTabbarInMain(main), tabbar);
+    assert.equal(helpers.findExitButton(root), exitItem);
+  }
+});
+
+test('findLightTabContainer matches ZH, EN, and structural fallback next to .leftpart', () => {
+  for (const btnLabel of ['主键灯', '按键灯光', 'Main key light', 'Primary Light']) {
+    const tabRow = el('div', {children: [el('button', {text: btnLabel}), el('button', {text: 'Front'})]});
+    const columns = el('div', {children: [el('div', {cls: 'leftpart'})]});
+    const panel = el('div', {cls: 'local-settings-panel', children: [el('div', {children: [tabRow, columns]})]});
+    const main = el('div', {cls: 'main-content', children: [panel]});
+    assert.equal(helpers.findLightTabContainer(main), tabRow);
+  }
+});
+
+test('identifyKeymapSubtab supports Chinese, English, DOM structure, and index fallback', () => {
+  const zhButtons = ['基础键', '多媒体键', '灯效键', '组合键', '宏'].map(t => el('button', {text: t}));
+  assert.equal(helpers.identifyKeymapSubtab(zhButtons[3], zhButtons), 'combination');
+  assert.equal(helpers.identifyKeymapSubtab(zhButtons[4], zhButtons), 'macro');
+
+  const enButtons = ['Basic', 'Multimedia', 'LightEffect', 'CombinedKey', 'Macro'].map(t => el('button', {text: t}));
+  assert.equal(helpers.identifyKeymapSubtab(enButtons[0], enButtons), 'basic');
+  assert.equal(helpers.identifyKeymapSubtab(enButtons[1], enButtons), 'multimedia');
+  assert.equal(helpers.identifyKeymapSubtab(enButtons[2], enButtons), 'lighting');
+  assert.equal(helpers.identifyKeymapSubtab(enButtons[3], enButtons), 'combination');
+  assert.equal(helpers.identifyKeymapSubtab(enButtons[4], enButtons), 'macro');
+
+  // Unknown language fallback via index and .buttonComposition
+  const otherButtons = ['B0', 'B1', 'B2', 'B3', 'B4'].map(t => el('button', {text: t}));
+  assert.equal(helpers.identifyKeymapSubtab(otherButtons[4], otherButtons), 'macro');
+  const panelWithComp = el('div', {children: [el('div', {cls: 'buttonComposition'})]});
+  assert.equal(helpers.identifyKeymapSubtab(el('button', {text: 'Unknown'}), [], panelWithComp), 'combination');
+});
+
+test('findDeviceEntry distinguishes saved devices from add-device in ZH, EN, and icon src', () => {
+  const saved = el('div', {children: [el('img', {attrs: {src: '/thunder68/imgs/mg_connect.png'}}), el('span', {text: 'THUNDER 68'})]});
+  const addEn = el('div', {children: [el('img', {attrs: {src: '/thunder68/plus.png'}}), el('span', {text: 'New Product'})]});
+  const addZh = el('div', {children: [el('img', {attrs: {src: '/thunder68/plus_dark.png'}}), el('span', {text: '新增设备'})]});
+
+  assert.equal(helpers.isAddDeviceElement(addEn), true);
+  assert.equal(helpers.isAddDeviceElement(addZh), true);
+  assert.equal(helpers.isAddDeviceElement(saved), false);
+
+  const containerWithSaved = el('div', {cls: 'device-container', children: [addEn, saved]});
+  assert.equal(helpers.findDeviceEntry(containerWithSaved), saved);
+
+  const containerOnlyAdd = el('div', {cls: 'device-container', children: [addEn]});
+  assert.equal(helpers.findDeviceEntry(containerOnlyAdd), addEn);
+});
+
+test('findSelectMenuEntry resolves ZH, EN, and positional fallback', () => {
+  const enItems = ['Select All', 'Reverse Select', 'Numbers', 'WASD', 'Letters', 'Select None']
+    .map(label => el('div', {children: [el('img'), el('div', {text: label})]}));
+  const menu = el('div', {cls: 'select_menu', children: [el('button', {text: 'Restore All'}), ...enItems]});
+  const root = el('div', {children: [menu]});
+
+  assert.equal(helpers.findSelectMenuEntry(root, '全选'), enItems[0]);
+  assert.equal(helpers.findSelectMenuEntry(root, '反选'), enItems[1]);
+  assert.equal(helpers.findSelectMenuEntry(root, 'WASD'), enItems[3]);
+  assert.equal(helpers.findSelectMenuEntry(root, '字母键'), enItems[4]);
+});
+
+test('isReadingConfig and isDangerResetButton handle both Chinese and English', () => {
+  assert.equal(helpers.isReadingConfig('正在配置读取，请稍等', null), true);
+  assert.equal(helpers.isReadingConfig('Loading configuration, please wait.', null), true);
+  assert.equal(helpers.isReadingConfig('idle', {config: {mask: true, hintSource: 'operation'}}), true);
+  assert.equal(helpers.isReadingConfig('ready', {config: {mask: false, hintSource: ''}}), false);
+
+  assert.equal(helpers.isDangerResetButton(el('button', {text: '立即重置'})), true);
+  assert.equal(helpers.isDangerResetButton(el('button', {text: 'Reset'})), true);
+  assert.equal(helpers.isDangerResetButton(el('button', {text: 'Reset Now'})), true);
+  assert.equal(helpers.isDangerResetButton(el('button', {text: 'Save'})), false);
+});
+
+test('extractDeviceStatusInfo parses 2.4G battery, wired mode, and official version', () => {
+  const sidebar = el('div', {cls: 'sidebar', children: [el('span', {text: 'Version:  v1.3 build 0062'})]});
+  const wireless = helpers.extractDeviceStatusInfo({
+    common: {productId: 0x0434},
+    config: {settings: {batteryInfo: '50'}} // 0x50 = 80%
+  }, sidebar);
+  assert.equal(wireless.isWireless, true);
+  assert.equal(wireless.modeLabel, '2.4G 无线');
+  assert.equal(wireless.battery, 80);
+  assert.equal(wireless.officialVersion, 'v1.3 build 0062');
+
+  const fullCharge = helpers.extractDeviceStatusInfo({
+    common: {productId: 0x0434},
+    config: {settings: {batteryInfo: 'bc'}}
+  }, sidebar);
+  assert.equal(fullCharge.battery, 100);
+
+  const invalidBat = helpers.extractDeviceStatusInfo({
+    common: {productId: 0x0434},
+    config: {settings: {batteryInfo: '65'}} // 0x65 sentinel = unknown
+  }, sidebar);
+  assert.equal(invalidBat.battery, null);
+
+  const wired = helpers.extractDeviceStatusInfo({
+    common: {productId: 0x0211},
+    config: {settings: {batteryInfo: '50'}}
+  }, sidebar);
+  assert.equal(wired.modeLabel, 'USB 有线');
+  assert.equal(wired.battery, null);
+});
+
+test('classifyPaletteKey distinguishes main row digits from numpad digits, numpad enter, and right modifiers', () => {
+  const seen = new Map();
+  const main1 = helpers.classifyPaletteKey('!\n1', seen);
+  const main5 = helpers.classifyPaletteKey('%\n5', seen);
+  const num5 = helpers.classifyPaletteKey('5', seen);
+  const num7 = helpers.classifyPaletteKey('7\nHome', seen);
+  const num0 = helpers.classifyPaletteKey('0\nIns', seen);
+  const numDot = helpers.classifyPaletteKey('.\nDel', seen);
+  const mainEnter = helpers.classifyPaletteKey('Enter', seen);
+  const numEnter = helpers.classifyPaletteKey('Enter', seen);
+  const leftCtrl = helpers.classifyPaletteKey('Ctrl', seen);
+  const rightCtrl = helpers.classifyPaletteKey('Ctrl', seen);
+
+  assert.equal(main1.label, '1');
+  assert.equal(main1.group, 0);
+  assert.match(main1.title, /主键盘/);
+
+  assert.equal(main5.label, '5');
+  assert.equal(main5.group, 0);
+
+  assert.equal(num5.label, 'Num 5');
+  assert.equal(num5.group, 2);
+  assert.match(num5.search, /小键盘/);
+
+  assert.equal(num7.label, 'Num 7');
+  assert.equal(num7.group, 2);
+  assert.equal(num0.label, 'Num 0');
+  assert.equal(numDot.label, 'Num .');
+
+  assert.equal(mainEnter.label, 'Enter');
+  assert.equal(mainEnter.group, 1);
+  assert.equal(numEnter.label, 'Num Ent');
+  assert.equal(numEnter.group, 2);
+
+  assert.equal(leftCtrl.label, 'Ctrl');
+  assert.equal(rightCtrl.label, 'Ctrl R');
+  assert.equal(rightCtrl.group, 1);
+});
+
+test('createHidFeedbackController decouples diagnostic sampling from UI output notifications and handles close', () => {
+  const diagnostics = [];
+  const feedbacks = [];
+  const scheduled = [];
+  let timerSeq = 1;
+
+  const controller = helpers.createHidFeedbackController({
+    onDiagnostic: d => diagnostics.push(d),
+    onFeedback: f => feedbacks.push(f),
+    debounceMs: 80,
+    setTimeoutFn: fn => {
+      const id = timerSeq++;
+      scheduled.push({id, fn, active: true});
+      return id;
+    },
+    clearTimeoutFn: id => {
+      const entry = scheduled.find(item => item.id === id);
+      if (entry) entry.active = false;
+    }
+  });
+
+  // Burst 1: 15 outputs (exceeds diagnostic threshold of 8)
+  for (let i = 0; i < 15; i++) controller.recordOutput({reportId: 0, bytes: 64});
+  assert.equal(diagnostics.length, 8);
+  assert.equal(feedbacks.length, 0);
+
+  // Fire debounced timer -> UI gets notified even though count is 15!
+  scheduled.filter(t => t.active).forEach(t => { t.active = false; t.fn(); });
+  assert.equal(feedbacks.length, 1);
+  assert.equal(feedbacks[0].event, 'hid-output');
+  assert.equal(feedbacks[0].count, 15);
+
+  // Burst 2: outputs 16..25 -> still 0 new diagnostic logs, but UI MUST still get notified
+  for (let i = 0; i < 10; i++) controller.recordOutput({reportId: 0, bytes: 64});
+  assert.equal(diagnostics.length, 8);
+  scheduled.filter(t => t.active).forEach(t => { t.active = false; t.fn(); });
+  assert.equal(feedbacks.length, 2);
+  assert.equal(feedbacks[1].count, 25);
+
+  // Close event cancels pending debounce and immediately notifies both channels
+  controller.recordOutput({reportId: 0, bytes: 64});
+  controller.recordClose({name: 'THUNDER 68', vendorId: 0x369b, productId: 0x0211});
+  assert.equal(diagnostics[diagnostics.length - 1].event, 'hid-close');
+  assert.equal(feedbacks[feedbacks.length - 1].event, 'hid-close');
+  assert.equal(scheduled.filter(t => t.active).length, 0);
+});
+
+test('classifyFeedbackEvent separates page script errors from USB HID errors', () => {
+  assert.equal(helpers.classifyFeedbackEvent({event: 'page-error'}), 'page-error');
+  assert.equal(helpers.classifyFeedbackEvent({event: 'page-rejection'}), 'page-error');
+  assert.equal(helpers.classifyFeedbackEvent({event: 'hid-send-error'}), 'hid-error');
+  assert.equal(helpers.classifyFeedbackEvent({event: 'hid-open-error'}), 'hid-error');
+  assert.equal(helpers.classifyFeedbackEvent({event: 'hid-close'}), 'hid-close');
+  assert.equal(helpers.classifyFeedbackEvent({event: 'hid-output'}), 'hid-output');
+});
+
+test('createVerifyStateMachine prevents stale redux-persist false positives and completes only after real reconnect', () => {
+  const vm = helpers.createVerifyStateMachine({settleMs: 700});
+  vm.start('sig-expected');
+
+  // Before disconnect/reconnect, observing the same stale signature MUST NOT complete
+  vm.observeConfig('sig-expected', 1000);
+  assert.deepEqual(
+    vm.evaluate({connectedPage: true, deviceOpened: true, busy: false, reading: false, keyCount: 68, now: 2500}),
+    {done: false}
+  );
+
+  // Step 1: leave config page / close device
+  assert.equal(vm.onLeftConfigOrClosed(), true);
+  vm.markConnectTriggered();
+  assert.equal(vm.getState().phase, 'waiting-frame');
+
+  // Step 2: real device open resets observed signature & stableAt
+  vm.onDeviceOpened();
+  assert.equal(vm.getState().observedSignature, '');
+  assert.equal(vm.getState().stableAt, 0);
+
+  // Step 3: fresh HID frame + new config arrives
+  vm.onFreshHidActivity();
+  vm.observeConfig('sig-expected', 3000);
+
+  // Not yet settled (< 700ms)
+  assert.deepEqual(
+    vm.evaluate({connectedPage: true, deviceOpened: true, busy: false, reading: false, keyCount: 68, now: 3500}),
+    {done: false}
+  );
+
+  // Settled (>= 700ms) -> succeeds accurately
+  const res = vm.evaluate({connectedPage: true, deviceOpened: true, busy: false, reading: false, keyCount: 68, now: 3800});
+  assert.equal(res.done, true);
+  assert.equal(res.matched, true);
+  assert.equal(vm.getState().active, false);
+
+  // Mismatch scenario
+  vm.start('sig-old');
+  vm.onLeftConfigOrClosed();
+  vm.onDeviceOpened();
+  vm.onFreshHidActivity();
+  vm.observeConfig('sig-different', 5000);
+  const mismatch = vm.evaluate({connectedPage: true, deviceOpened: true, busy: false, reading: false, keyCount: 68, now: 5800});
+  assert.equal(mismatch.done, true);
+  assert.equal(mismatch.matched, false);
+
+  // Abort cleanly resets active flag
+  vm.start('sig-abort');
+  assert.equal(vm.getState().active, true);
+  vm.abort();
+  assert.equal(vm.getState().active, false);
+  assert.equal(vm.getState().phase, 'idle');
+});
