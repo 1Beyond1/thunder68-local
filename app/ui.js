@@ -1,6 +1,7 @@
 /* Presentation adapter: official React nodes and HID handlers stay in place. */
 (() => {
   'use strict';
+  const helpers = window.thunder68Helpers;
   const pages = [
     ['按键定义', 'keyboard', '点击键盘上的按键，再选择要分配的功能。'],
     ['灯效设置', 'sun', '调整灯光模式、亮度与颜色。'],
@@ -18,10 +19,16 @@
     settings: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="17" r="2"/>'
   };
   const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]}</svg>`;
+
   document.addEventListener('DOMContentLoaded', () => {
     const root = document.getElementById('root');
-    if (!root) return;
-    const shell = document.createElement('div'); shell.id = 'local-shell';
+    if (!root || !helpers) return;
+
+    const appVersion = window.thunder68Local?.version || '';
+    const versionSuffix = appVersion ? ` <span class="local-footer-separator">·</span> ${appVersion}` : '';
+
+    const shell = document.createElement('div');
+    shell.id = 'local-shell';
     shell.innerHTML = `
       <header class="local-header">
         <a class="local-brand" href="#" aria-label="雷电68，返回设备列表"><span class="local-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M14 2 5 13h6l-1 9 9-12h-6l1-8Z" fill="currentColor"/></svg></span>THUNDER<span class="local-brand-number">68</span></a>
@@ -31,184 +38,482 @@
         <div class="local-rail-label">设备</div>
         <button class="local-device-link">${icon('keyboard')}<span>我的设备</span></button>
         <div class="local-config-nav"><div class="local-rail-label">键盘配置</div>${pages.map(([label, glyph], i) => `<button class="local-nav-item" data-page="${i}">${icon(glyph)}<span>${label}</span></button>`).join('')}</div>
-        <div class="local-rail-bottom"><span class="local-offline-dot"></span>THUNDER 68<div>磁轴键盘 · USB</div></div>
+        <div class="local-rail-bottom"><span class="local-offline-dot"></span>THUNDER 68<div class="local-rail-meta"><span class="local-rail-mode">磁轴键盘 · USB / 2.4G</span><span class="local-rail-version" hidden></span></div></div>
       </aside>
       <div class="local-page-heading"><div><h1>按键定义</h1><p></p></div><span class="local-status" role="status"><i></i><span>未连接</span></span></div>
-      <section class="local-welcome"><article class="local-connect-card"><div class="local-card-heading"><span class="local-model">THUNDER <b>68</b></span><span class="local-usb-tag">USB 有线</span></div><div class="local-home-board" aria-label="雷电68键盘布局"></div><div class="local-connect-card-bottom"><div><h2>雷电68</h2><p>68 键布局 · 磁轴键盘</p></div><button class="local-connect-button">连接键盘 <span>→</span></button></div></article><aside class="local-connect-guide"><h2>开始配置</h2><ol><li><b>连接键盘</b><p>使用 USB 线将键盘连接到电脑。</p></li><li><b>建立连接</b><p>点击“连接键盘”，读取当前配置。</p></li><li><b>调整手感</b><p>配置按键、灯光与触发行程。</p></li></ol><div class="local-guide-note">连接失败时，先断开官网驱动中的连接，再重试。</div></aside></section>
-      <section class="local-board-overlay"><div class="local-board-title"><b>THUNDER 68 <span>当前键盘</span></b><button class="local-zoom-board" aria-pressed="false">放大键盘</button></div><div class="local-live-board"></div><div class="local-selection"><div class="local-selection-summary"><span class="local-selection-label">未选择按键</span><button class="local-clear-selection">清除</button></div><div class="local-selection-shortcuts"><button data-select="WASD">WASD</button><button data-select="字母键">字母</button><button data-select="全选">全选</button><button data-select="反选">反选</button></div><button class="local-reset-keys">恢复默认…</button></div><div class="local-key-chips" aria-label="已选按键"></div><p class="local-board-instruction">点击选择按键；再次点击取消。参数调整作用于全部已选按键。</p></section>
-      <section class="local-palette"><div class="local-palette-toolbar"><label class="local-search-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg><input type="search" placeholder="搜索按键，如 Esc、空格、F1" aria-label="搜索可分配按键"></label><span class="local-palette-count"></span></div><div class="local-palette-grid"></div><div class="local-search-empty" hidden>没有找到匹配按键，试试其他名称。</div></section>
-      <footer class="local-footer"><span class="local-operation" role="status" aria-live="polite">连接键盘后读取当前配置</span><button class="local-verify" hidden>重新读取核对</button><span>本地驱动 <span class="local-footer-separator">·</span> 0.2.1</span></footer>`;
+      <section class="local-welcome"><article class="local-connect-card"><div class="local-card-heading"><span class="local-model">THUNDER <b>68</b></span><span class="local-usb-tag">USB / 2.4G</span></div><div class="local-home-board" aria-label="雷电68键盘布局"></div><div class="local-connect-card-bottom"><div><h2>雷电68</h2><p>68 键布局 · 磁轴键盘</p></div><button class="local-connect-button">连接键盘 <span>→</span></button></div></article><aside class="local-connect-guide"><h2>开始配置</h2><ol><li><b>连接键盘</b><p>通过 USB 线或 2.4G 接收器连接到电脑。</p></li><li><b>建立连接</b><p>点击“连接键盘”，读取当前配置（2.4G 模式将弹出配对/进入提示）。</p></li><li><b>调整手感</b><p>配置按键、灯光与触发行程。</p></li></ol><div class="local-guide-note">连接失败时，先断开官网驱动中的连接，再重试。</div></aside></section>
+      <section class="local-board-overlay"><div class="local-board-title"><b>THUNDER 68 <span>当前键盘</span></b><button class="local-zoom-board" aria-pressed="false">放大键盘</button></div><div class="local-selection"><div class="local-selection-summary"><span class="local-selection-label">未选择按键</span><button class="local-clear-selection">清除</button></div><div class="local-selection-shortcuts"><button data-select="WASD">WASD</button><button data-select="字母键">字母</button><button data-select="全选">全选</button><button data-select="反选">反选</button></div><button class="local-reset-keys">恢复默认…</button></div><div class="local-key-chips" aria-label="已选按键"></div><p class="local-board-instruction">点击选择按键；再次点击取消。参数调整作用于全部已选按键。</p></section>
+      <section class="local-palette"><div class="local-palette-toolbar"><label class="local-search-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg><input type="search" placeholder="搜索按键，如 Esc、空格、Num 1、F1" aria-label="搜索可分配按键"></label><span class="local-palette-count"></span></div><div class="local-palette-grid"></div><div class="local-search-empty" hidden>没有找到匹配按键，试试其他名称。</div></section>
+      <footer class="local-footer"><span class="local-operation" role="status" aria-live="polite">连接键盘后读取当前配置</span><div class="local-footer-actions"><button class="local-import-config" hidden>导入配置</button><button class="local-verify" hidden>重新读取核对</button></div><span>本地驱动${versionSuffix}</span></footer>`;
     document.body.appendChild(shell);
-    const themeControl=shell.querySelector('#local-theme'), media=matchMedia('(prefers-color-scheme: dark)');
-    let themeChoice='system';try{themeChoice=localStorage.getItem('thunder68.theme')||'system';}catch{}
-    if(!['dark','light','system'].includes(themeChoice))themeChoice='system';
-    function applyTheme(){const resolved=themeChoice==='system'?(media.matches?'dark':'light'):themeChoice;document.documentElement.dataset.theme=resolved;document.documentElement.dataset.themeChoice=themeChoice;themeControl.value=themeChoice;window.thunder68Local?.setTheme?.(resolved);}
-    themeControl.addEventListener('change',()=>{themeChoice=themeControl.value;try{localStorage.setItem('thunder68.theme',themeChoice);}catch{}applyTheme();});media.addEventListener('change',applyTheme);applyTheme();
-    shell.querySelector('.local-zoom-board').addEventListener('click',e=>{const expanded=document.body.classList.toggle('local-board-expanded');e.currentTarget.setAttribute('aria-pressed',String(expanded));e.currentTarget.textContent=expanded?'收起键盘':'放大键盘';window.dispatchEvent(new Event('resize'));});
-    const operation=shell.querySelector('.local-operation'),verify=shell.querySelector('.local-verify');
-    let connectionTimer, verificationExpected=null, verifying=false, lastConfiguration=null, ready=false, lastBusy=false, feedbackLocked=false,lastEditAt=0,observedSignature='',stableAt=0,settleTimer;
-    root.addEventListener('pointerdown',e=>{if(e.target.closest('.local-settings-panel')&&!e.target.closest('.tab-navigation'))lastEditAt=Date.now();},true);
-    root.addEventListener('change',e=>{if(e.target.closest('.local-settings-panel'))lastEditAt=Date.now();},true);
-    const configuration=config=>JSON.stringify([config?.keyValues,config?.buttonMap,config?.lightness,config?.superkeys,config?.settings,config?.macroMap,config?.triggerMode]);
-    const feedback=(text,kind='neutral')=>{operation.textContent=text;operation.dataset.kind=kind;};
-    const connect=()=>{
-      feedbackLocked=false;
-      const container=root.querySelector('.device-container');
-      const entries=[...container?.children||[]];
-      const target=entries.find(e=>e.querySelector('span') && e.querySelector('span').textContent.trim()!=='新增设备')||entries.find(e=>e.querySelector('span')?.textContent.trim()==='新增设备');
-      if(!target){feedback('连接入口尚未就绪，请稍后重试。','error');return;}
-      feedback('正在连接并读取配置…');shell.querySelector('.local-connect-button').disabled=true;
-      clearTimeout(connectionTimer);connectionTimer=setTimeout(()=>{shell.querySelector('.local-connect-button').disabled=false;feedback('读取未完成。检查 USB 连接，并关闭占用键盘的官网驱动后重试。','error');verifying=false;},30000);
-      target.click();
+
+    const themeControl = shell.querySelector('#local-theme');
+    const media = matchMedia('(prefers-color-scheme: dark)');
+    let themeChoice = 'system';
+    try { themeChoice = localStorage.getItem('thunder68.theme') || 'system'; } catch {}
+    if (!['dark', 'light', 'system'].includes(themeChoice)) themeChoice = 'system';
+
+    function applyTheme() {
+      const resolved = themeChoice === 'system' ? (media.matches ? 'dark' : 'light') : themeChoice;
+      document.documentElement.dataset.theme = resolved;
+      document.documentElement.dataset.themeChoice = themeChoice;
+      themeControl.value = themeChoice;
+      window.thunder68Local?.setTheme?.(resolved);
+    }
+    themeControl.addEventListener('change', () => {
+      themeChoice = themeControl.value;
+      try { localStorage.setItem('thunder68.theme', themeChoice); } catch {}
+      applyTheme();
+    });
+    media.addEventListener('change', applyTheme);
+    applyTheme();
+
+    shell.querySelector('.local-zoom-board').addEventListener('click', e => {
+      const expanded = document.body.classList.toggle('local-board-expanded');
+      e.currentTarget.setAttribute('aria-pressed', String(expanded));
+      e.currentTarget.textContent = expanded ? '收起键盘' : '放大键盘';
+      window.dispatchEvent(new Event('resize'));
+    });
+
+    const operation = shell.querySelector('.local-operation');
+    const verify = shell.querySelector('.local-verify');
+    const importBtn = shell.querySelector('.local-import-config');
+    const connectButton = shell.querySelector('.local-connect-button');
+
+    const verifyMachine = helpers.createVerifyStateMachine({settleMs: 700});
+    let connectionTimer;
+    let verifyWaitTimer;
+    let lastConfiguration = null;
+    let ready = false;
+    let lastBusy = false;
+    let feedbackLocked = false;
+    let lastEditAt = 0;
+    let observedSignature = '';
+    let stableAt = 0;
+    let settleTimer;
+
+    root.addEventListener('pointerdown', e => {
+      if (e.target.closest('.local-settings-panel') && !e.target.closest('.tab-navigation')) lastEditAt = Date.now();
+    }, true);
+    root.addEventListener('change', e => {
+      if (e.target.closest('.local-settings-panel')) lastEditAt = Date.now();
+    }, true);
+
+    const configuration = config => JSON.stringify([
+      config?.keyValues, config?.buttonMap, config?.lightness,
+      config?.superkeys, config?.settings, config?.macroMap, config?.triggerMode
+    ]);
+    const feedback = (text, kind = 'neutral') => {
+      operation.textContent = text;
+      operation.dataset.kind = kind;
     };
-    verify.addEventListener('click',()=>{
-      verificationExpected=configuration(window.thunder68Presentation.state()?.config);verifying=true;ready=false;feedbackLocked=false;
-      returnToDevices();setTimeout(connect,350);
+
+    const resetVerifyTimers = () => {
+      clearTimeout(verifyWaitTimer);
+      verifyWaitTimer = null;
+    };
+
+    const connect = () => {
+      feedbackLocked = false;
+      const container = root.querySelector('.device-container');
+      const target = helpers.findDeviceEntry(container);
+      if (!target) {
+        if (verifyMachine.getState().active) {
+          verifyMachine.abort();
+          resetVerifyTimers();
+        }
+        connectButton.disabled = false;
+        feedback('连接入口尚未就绪，请稍后重试。', 'error');
+        return false;
+      }
+      feedback('正在连接并读取配置…');
+      connectButton.disabled = true;
+      clearTimeout(connectionTimer);
+      connectionTimer = setTimeout(() => {
+        // Do not report timeout if the official 2.4G pairing modal is awaiting user action
+        if (root.querySelector('.sidebar .modal-overlay')) return;
+        connectButton.disabled = false;
+        feedback('读取未完成。检查 USB/2.4G 连接，并关闭占用键盘的官网驱动后重试。', 'error');
+        verifyMachine.abort();
+        resetVerifyTimers();
+      }, 30000);
+      target.click();
+      return true;
+    };
+
+    importBtn.addEventListener('click', () => {
+      const fileInput = root.querySelector('#fileInput');
+      if (!fileInput) {
+        feedback('导入控件尚未就绪，请先连接键盘。', 'error');
+        return;
+      }
+      lastEditAt = Date.now();
+      fileInput.click();
     });
-    window.addEventListener('thunder68-feedback',e=>{
-      if(e.detail.event.includes('error')){feedbackLocked=true;verifying=false;feedback('操作失败：请检查 USB 连接，重新连接后核对配置。','error');shell.querySelector('.local-connect-button').disabled=false;}
-      else if(e.detail.event==='hid-request-result' && !e.detail.count){clearTimeout(connectionTimer);feedback('未找到或未选择键盘。连接 USB 后重试。','error');shell.querySelector('.local-connect-button').disabled=false;}
-      else if(e.detail.event==='hid-output' && ready && !verifying && !feedbackLocked && Date.now()-lastEditAt<3000){feedback('设置已发送 · 重新读取可核对设备当前值');}
+
+    verify.addEventListener('click', () => {
+      const expected = configuration(window.thunder68Presentation.state()?.config);
+      ready = false;
+      feedbackLocked = false;
+      lastConfiguration = null;
+      observedSignature = '';
+      stableAt = 0;
+      deviceOpened = false;
+      clearTimeout(settleTimer);
+      clearTimeout(connectionTimer);
+      resetVerifyTimers();
+
+      verifyMachine.start(expected);
+      feedback('正在断开并重新读取键盘配置…');
+      const returned = returnToDevices();
+      if (!returned) {
+        verifyMachine.abort();
+        feedback('未能找到返回设备列表入口，无法重新读取核对。', 'error');
+        synchronize();
+        return;
+      }
+      // Safety fallback if leaving the config view stalls
+      verifyWaitTimer = setTimeout(() => {
+        if (!verifyMachine.getState().active) return;
+        const vState = verifyMachine.getState();
+        if (!vState.connectTriggered) {
+          verifyMachine.abort();
+          connectButton.disabled = false;
+          feedback('重新读取超时，请手动返回“我的设备”后重连。', 'error');
+          synchronize();
+        }
+      }, 8000);
+      synchronize();
     });
-    const keyDetails=document.createElement('div');keyDetails.className='local-key-details';keyDetails.setAttribute('role','status');
+
+    window.addEventListener('thunder68-feedback', e => {
+      const kind = helpers.classifyFeedbackEvent(e.detail);
+      if (kind === 'page-error') {
+        // Keep page script exceptions separate from USB disconnect banners
+        return;
+      }
+      if (kind === 'hid-error') {
+        clearTimeout(connectionTimer);
+        resetVerifyTimers();
+        feedbackLocked = true;
+        verifyMachine.abort();
+        feedback('操作失败：请检查 USB/2.4G 连接，重新连接后核对配置。', 'error');
+        connectButton.disabled = false;
+      } else if (kind === 'hid-request-result' && !e.detail.count) {
+        clearTimeout(connectionTimer);
+        resetVerifyTimers();
+        verifyMachine.abort();
+        feedback('未找到或未选择键盘。连接 USB 或 2.4G 接收器后重试。', 'error');
+        connectButton.disabled = false;
+      } else if (kind === 'hid-close') {
+        deviceOpened = false;
+        ready = false;
+        verifyMachine.onLeftConfigOrClosed();
+        synchronize();
+      } else if (kind === 'hid-input') {
+        verifyMachine.onFreshHidActivity();
+      } else if (kind === 'hid-output' && ready && !verifyMachine.getState().active && !feedbackLocked && Date.now() - lastEditAt < 3000) {
+        feedback('设置已发送 · 重新读取可核对设备当前值');
+      }
+    });
+
+    const keyDetails = document.createElement('div');
+    keyDetails.className = 'local-key-details';
+    keyDetails.setAttribute('role', 'status');
     shell.querySelector('.local-board-overlay').appendChild(keyDetails);
-    const svgNamespace='http://www.w3.org/2000/svg';
-    const parameterCanvas=document.createElementNS(svgNamespace,'svg');parameterCanvas.classList.add('local-parameter-labels');parameterCanvas.setAttribute('aria-hidden','true');shell.appendChild(parameterCanvas);
+
+    const svgNamespace = 'http://www.w3.org/2000/svg';
+    const parameterCanvas = document.createElementNS(svgNamespace, 'svg');
+    parameterCanvas.classList.add('local-parameter-labels');
+    parameterCanvas.setAttribute('aria-hidden', 'true');
+    shell.appendChild(parameterCanvas);
     let parameterSignature;
+
     function drawParameters() {
-      const state=window.thunder68Presentation.state(),native=root.querySelector('.keyboard_image canvas');
-      const hidden=currentIndex!==2 || !native;parameterCanvas.toggleAttribute('hidden',hidden);
-      if(hidden)return;
-      const rect=native.getBoundingClientRect();
-      const style=`left:${rect.x}px;top:${rect.y}px;width:${rect.width}px;height:${rect.height}px;clip-path:inset(${Math.max(0,148-rect.y)}px 0 ${Math.max(0,rect.bottom-(innerHeight-42))}px 0);`;
-      if(parameterCanvas.getAttribute('style')!==style)parameterCanvas.setAttribute('style',style);
-      const signature=JSON.stringify([native.width,native.height,state?.config?.keyValues,state?.config?.fastTriggerShow,state?.config?.fastTriggerRTShow]);
-      if(signature===parameterSignature)return;parameterSignature=signature;
-      parameterCanvas.setAttribute('viewBox',`0 0 ${state.common.deviceParams.layoutX} ${state.common.deviceParams.layoutY}`);parameterCanvas.setAttribute('preserveAspectRatio','none');parameterCanvas.replaceChildren();
-      const values=new Map(state.config.keyValues.map(value=>[value.id,value]));
-      const badge=(value,x,y,color,align,fontSize)=>{
-        if(value===null || value===undefined || !Number.isFinite(Number(value)))return;
-        const text=Number(value).toFixed(2),width=text.length*fontSize*.62,left=align==='right'?x-width:align==='center'?x-width/2:x;
-        const background=document.createElementNS(svgNamespace,'rect');
-        for(const [name,value] of Object.entries({x:left-3,y:y-1,width:width+6,height:fontSize+2,fill:'#fffffff0'}))background.setAttribute(name,value);
-        const label=document.createElementNS(svgNamespace,'text');label.textContent=text;
-        for(const [name,value] of Object.entries({x,y:y+fontSize*.83,fill:color,'text-anchor':align==='right'?'end':align==='center'?'middle':'start','font-family':'Consolas,monospace','font-size':fontSize,'font-weight':600}))label.setAttribute(name,value);
-        parameterCanvas.append(background,label);
+      const state = window.thunder68Presentation?.state();
+      const native = root.querySelector('.keyboard_image canvas');
+      const params = state?.common?.deviceParams;
+      const keyValues = state?.config?.keyValues;
+      const hidden = currentIndex !== 2 || !native || !params || !Array.isArray(params.layoutMappingData) || !params.layoutX || !params.layoutY || !Array.isArray(keyValues);
+      parameterCanvas.toggleAttribute('hidden', hidden);
+      if (hidden) return;
+
+      const rect = native.getBoundingClientRect();
+      const style = `left:${rect.x}px;top:${rect.y}px;width:${rect.width}px;height:${rect.height}px;clip-path:inset(${Math.max(0, 148 - rect.y)}px 0 ${Math.max(0, rect.bottom - (innerHeight - 42))}px 0);`;
+      if (parameterCanvas.getAttribute('style') !== style) parameterCanvas.setAttribute('style', style);
+
+      const signature = JSON.stringify([native.width, native.height, keyValues, state?.config?.fastTriggerShow, state?.config?.fastTriggerRTShow]);
+      if (signature === parameterSignature) return;
+      parameterSignature = signature;
+
+      parameterCanvas.setAttribute('viewBox', `0 0 ${params.layoutX} ${params.layoutY}`);
+      parameterCanvas.setAttribute('preserveAspectRatio', 'none');
+      parameterCanvas.replaceChildren();
+      const values = new Map(keyValues.map(value => [value.id, value]));
+      const badge = (value, x, y, color, align, fontSize) => {
+        if (value === null || value === undefined || !Number.isFinite(Number(value))) return;
+        const text = Number(value).toFixed(2);
+        const width = text.length * fontSize * 0.62;
+        const left = align === 'right' ? x - width : align === 'center' ? x - width / 2 : x;
+        const background = document.createElementNS(svgNamespace, 'rect');
+        for (const [name, attrVal] of Object.entries({x: left - 3, y: y - 1, width: width + 6, height: fontSize + 2, fill: '#fffffff0'})) {
+          background.setAttribute(name, attrVal);
+        }
+        const label = document.createElementNS(svgNamespace, 'text');
+        label.textContent = text;
+        for (const [name, attrVal] of Object.entries({
+          x,
+          y: y + fontSize * 0.83,
+          fill: color,
+          'text-anchor': align === 'right' ? 'end' : align === 'center' ? 'middle' : 'start',
+          'font-family': 'Consolas,monospace',
+          'font-size': fontSize,
+          'font-weight': 600
+        })) label.setAttribute(name, attrVal);
+        parameterCanvas.append(background, label);
       };
-      for(const key of state.common.deviceParams.layoutMappingData){
-        const value=values.get(key.id);if(!value)continue;
-        if(state.config.fastTriggerShow)badge(value.travelValue,key.x+key.width-5,value.isRTEnabled?key.y+4:key.y+key.height-32,'#2155b7','right',26);
-        if(state.config.fastTriggerRTShow && value.isRTEnabled){
-          badge(value.isIndependentSensitivity?value.triggerSensitivity:value.sensitivity,key.x+4,key.y+key.height-24,'#176339','left',20);
-          badge(value.isIndependentSensitivity?value.resetSensitivity:value.sensitivity,key.x+key.width-4,key.y+key.height-24,'#95440c','right',20);
+
+      for (const key of params.layoutMappingData) {
+        const value = values.get(key.id);
+        if (!value) continue;
+        if (state.config.fastTriggerShow) {
+          badge(value.travelValue, key.x + key.width - 5, value.isRTEnabled ? key.y + 4 : key.y + key.height - 32, '#2155b7', 'right', 26);
+        }
+        if (state.config.fastTriggerRTShow && value.isRTEnabled) {
+          badge(value.isIndependentSensitivity ? value.triggerSensitivity : value.sensitivity, key.x + 4, key.y + key.height - 24, '#176339', 'left', 20);
+          badge(value.isIndependentSensitivity ? value.resetSensitivity : value.sensitivity, key.x + key.width - 4, key.y + key.height - 24, '#95440c', 'right', 20);
         }
       }
     }
-    function updateKeyDetails(config,selection) {
-      if(!selection.length){keyDetails.textContent='选择键盘上的按键，查看该键的具体参数。';return;}
-      const values=selection.map(id=>config?.keyValues?.find(value=>value.id===id));
-      const field=(name,format,read=value=>value?.[name])=>{
-        const entries=values.map(read);
-        if(entries.some(value=>value===undefined || value===null))return '未读取';
-        return entries.every(value=>value===entries[0]) ? format(entries[0]) : '不同';
+
+    function updateKeyDetails(config, selection) {
+      if (!selection.length) {
+        keyDetails.textContent = '选择键盘上的按键，查看该键的具体参数。';
+        return;
+      }
+      const values = selection.map(id => config?.keyValues?.find(value => value.id === id));
+      const field = (name, format, read = value => value?.[name]) => {
+        const entries = values.map(read);
+        if (entries.some(value => value === undefined || value === null)) return '未读取';
+        return entries.every(value => value === entries[0]) ? format(entries[0]) : '不同';
       };
-      const mm=value=>Number.isFinite(Number(value)) ? Number(value).toFixed(2)+' mm' : '未读取';
-      const fields=[['触发行程',field('travelValue',mm)],['快速触发 RT',field('isRTEnabled',value=>value?'开启':'关闭')]];
-      if(values.some(value=>value?.isRTEnabled) && !values.every(value=>value?.isRTEnabled))fields.push(['RT 灵敏度','不同（部分关闭）']);
-      else if(values.some(value=>value?.isRTEnabled)){
-        const independent=values.some(value=>value?.isIndependentSensitivity);
-        if(independent){fields.push(['按下灵敏度',field('triggerSensitivity',mm,value=>value?.isIndependentSensitivity?value.triggerSensitivity:value?.sensitivity)],['抬起灵敏度',field('resetSensitivity',mm,value=>value?.isIndependentSensitivity?value.resetSensitivity:value?.sensitivity)]);}
-        else fields.push(['RT 灵敏度',field('sensitivity',mm)]);
+      const mm = value => Number.isFinite(Number(value)) ? Number(value).toFixed(2) + ' mm' : '未读取';
+      const fields = [['触发行程', field('travelValue', mm)], ['快速触发 RT', field('isRTEnabled', value => value ? '开启' : '关闭')]];
+      if (values.some(value => value?.isRTEnabled) && !values.every(value => value?.isRTEnabled)) {
+        fields.push(['RT 灵敏度', '不同（部分关闭）']);
+      } else if (values.some(value => value?.isRTEnabled)) {
+        const independent = values.some(value => value?.isIndependentSensitivity);
+        if (independent) {
+          fields.push(
+            ['按下灵敏度', field('triggerSensitivity', mm, value => value?.isIndependentSensitivity ? value.triggerSensitivity : value?.sensitivity)],
+            ['抬起灵敏度', field('resetSensitivity', mm, value => value?.isIndependentSensitivity ? value.resetSensitivity : value?.sensitivity)]
+          );
+        } else {
+          fields.push(['RT 灵敏度', field('sensitivity', mm)]);
+        }
       }
       keyDetails.replaceChildren();
-      const name=document.createElement('strong');name.textContent=selection.length===1?selection[0]:`${selection.length} 个按键`;keyDetails.appendChild(name);
-      for(const [label,value] of fields){const item=document.createElement('span'),caption=document.createElement('span'),number=document.createElement('b');caption.textContent=label;number.textContent=value;item.append(caption,number);keyDetails.appendChild(item);}
+      const name = document.createElement('strong');
+      name.textContent = selection.length === 1 ? selection[0] : `${selection.length} 个按键`;
+      keyDetails.appendChild(name);
+      for (const [label, value] of fields) {
+        const item = document.createElement('span');
+        const caption = document.createElement('span');
+        const number = document.createElement('b');
+        caption.textContent = label;
+        number.textContent = value;
+        item.append(caption, number);
+        keyDetails.appendChild(item);
+      }
     }
-    let tabs = [], deviceOpened = false, storeSubscribed = false, currentIndex = 0, paletteNodes = [];
-    const photo=document.createElement('img');photo.src='/thunder68/imgs/mg_main.png';photo.alt='雷电68键盘';shell.querySelector('.local-home-board').appendChild(photo);
-    for(const button of shell.querySelectorAll('[data-select]'))button.addEventListener('click',()=>{
-      const native=[...root.querySelectorAll('.select_menu div')].find(node=>!node.children.length&&node.textContent.trim()===button.dataset.select);
-      if(currentIndex===2 && native){native.parentElement.click();return;}
-      const state=window.thunder68Presentation.state(),ids=state?.common.deviceParams.layoutMappingData.map(k=>k.id)||[],selected=state?.config.mapPendingKey||[];
-      const value=button.dataset.select;
-      window.thunder68Presentation.selectKeys(value==='全选'?ids:value==='反选'?ids.filter(id=>!selected.includes(id)):value==='字母键'?ids.filter(id=>/^[A-Z]$/.test(id)):ids.filter(id=>['W','A','S','D'].includes(id)));
+
+    let tabs = [];
+    let deviceOpened = false;
+    let storeSubscribed = false;
+    let currentIndex = 0;
+    let paletteNodes = [];
+
+    const photo = document.createElement('img');
+    photo.src = '/thunder68/imgs/mg_main.png';
+    photo.alt = '雷电68键盘';
+    shell.querySelector('.local-home-board').appendChild(photo);
+
+    for (const button of shell.querySelectorAll('[data-select]')) {
+      button.addEventListener('click', () => {
+        const native = helpers.findSelectMenuEntry(root, button.dataset.select);
+        if (currentIndex === 2 && native) {
+          native.click();
+          return;
+        }
+        const state = window.thunder68Presentation?.state();
+        const ids = state?.common?.deviceParams?.layoutMappingData?.map(k => k.id) || [];
+        const selected = state?.config?.mapPendingKey || [];
+        if (!ids.length) return;
+        const value = button.dataset.select;
+        window.thunder68Presentation.selectKeys(
+          value === '全选' ? ids
+            : value === '反选' ? ids.filter(id => !selected.includes(id))
+            : value === '字母键' ? ids.filter(id => /^[A-Z]$/.test(id))
+            : ids.filter(id => ['W', 'A', 'S', 'D'].includes(id))
+        );
+      });
+    }
+
+    shell.querySelector('.local-clear-selection').addEventListener('click', () => {
+      const canvas = root.querySelector('.keyboard_image canvas');
+      const rect = canvas?.getBoundingClientRect();
+      if (rect) {
+        canvas.dispatchEvent(new MouseEvent('click', {bubbles: true, clientX: rect.x + rect.width * 0.5, clientY: rect.y + rect.height * 0.06}));
+      }
+      window.thunder68Presentation?.selectKeys([]);
+      synchronize();
     });
-    shell.querySelector('.local-clear-selection').addEventListener('click',()=>{
-      const canvas=root.querySelector('.keyboard_image canvas'),rect=canvas?.getBoundingClientRect();
-      if(rect)canvas.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:rect.x+rect.width*.5,clientY:rect.y+rect.height*.06}));
-      window.thunder68Presentation.selectKeys([]);synchronize();
-    });
-    shell.querySelector('.local-reset-keys').addEventListener('click',()=>root.querySelector('.select_menu button')?.click());
-    shell.querySelector('.local-connect-button').addEventListener('click',connect);
-    const palette = shell.querySelector('.local-palette'), search=palette.querySelector('input');
+    shell.querySelector('.local-reset-keys').addEventListener('click', () => root.querySelector('.select_menu button')?.click());
+    connectButton.addEventListener('click', connect);
+
+    const palette = shell.querySelector('.local-palette');
+    const search = palette.querySelector('input');
     function filterPalette() {
-      const query=search.value.trim().toLowerCase();let count=0;
-      for(const button of palette.querySelectorAll('.local-function-key')){const match=!query || button.dataset.search.includes(query);button.hidden=!match;if(match)count++;}
-      for(const group of palette.querySelectorAll('.local-function-group'))group.hidden=![...group.querySelectorAll('button')].some(button=>!button.hidden);
-      palette.querySelector('.local-palette-count').textContent=`${count} 个按键`;
-      palette.querySelector('.local-search-empty').hidden=count>0;
+      const query = search.value.trim().toLowerCase();
+      let count = 0;
+      for (const button of palette.querySelectorAll('.local-function-key')) {
+        const match = !query || button.dataset.search.includes(query);
+        button.hidden = !match;
+        if (match) count++;
+      }
+      for (const group of palette.querySelectorAll('.local-function-group')) {
+        group.hidden = ![...group.querySelectorAll('button')].some(button => !button.hidden);
+      }
+      palette.querySelector('.local-palette-count').textContent = `${count} 个按键`;
+      palette.querySelector('.local-search-empty').hidden = count > 0;
     }
-    search.addEventListener('input',filterPalette);
-    function positionOverlay(element,rect,insets) {
-      if(!rect?.width)return;
-      const [left,top,right,bottom]=insets;
-      const x=rect.x+left,y=rect.y+top,width=Math.max(0,rect.width-left-right),height=Math.max(0,rect.height-top-bottom);
-      const style=`left:${x}px;top:${y}px;width:${width}px;height:${height}px;clip-path:inset(${Math.min(height,Math.max(0,148-y))}px 0 ${Math.min(height,Math.max(0,y+height-(innerHeight-42)))}px 0);`;
-      if(element.getAttribute('style')!==style)element.setAttribute('style',style);
+    search.addEventListener('input', filterPalette);
+
+    function positionOverlay(element, rect, insets) {
+      if (!rect?.width) return;
+      const [left, top, right, bottom] = insets;
+      const x = rect.x + left;
+      const y = rect.y + top;
+      const width = Math.max(0, rect.width - left - right);
+      const height = Math.max(0, rect.height - top - bottom);
+      const style = `left:${x}px;top:${y}px;width:${width}px;height:${height}px;clip-path:inset(${Math.min(height, Math.max(0, 148 - y))}px 0 ${Math.min(height, Math.max(0, y + height - (innerHeight - 42)))}px 0);`;
+      if (element.getAttribute('style') !== style) element.setAttribute('style', style);
     }
-    function updateOverlays(){
-      const stage=root.querySelector('.local-keyboard-stage');
-      if(stage)positionOverlay(shell.querySelector('.local-board-overlay'),stage.getBoundingClientRect(),[20,18,20,18]);
-      const panel=root.querySelector('.local-settings-panel');
-      if(panel){const rect=panel.getBoundingClientRect(),nav=(panel.querySelector('.buttonComposition')||panel.querySelector('.tab-navigation'))?.getBoundingClientRect();positionOverlay(palette,rect,[20,nav?nav.bottom-rect.y+18:110,20,20]);}
+
+    function updateOverlays() {
+      const stage = root.querySelector('.local-keyboard-stage');
+      if (stage) positionOverlay(shell.querySelector('.local-board-overlay'), stage.getBoundingClientRect(), [20, 18, 20, 18]);
+      const panel = root.querySelector('.local-settings-panel');
+      if (panel) {
+        const rect = panel.getBoundingClientRect();
+        const nav = (panel.querySelector('.buttonComposition') || panel.querySelector('.tab-navigation'))?.getBoundingClientRect();
+        positionOverlay(palette, rect, [20, nav ? nav.bottom - rect.y + 18 : 110, 20, 20]);
+      }
       drawParameters();
     }
-    window.addEventListener('resize',updateOverlays);
+
+    window.addEventListener('resize', updateOverlays);
     // The captured renderer clears its canvas during resize. Notify it once the
     // image settles so its existing selection and parameter drawing is restored.
     let resizeRefresh;
-    window.addEventListener('resize',()=>{
+    window.addEventListener('resize', () => {
       clearTimeout(resizeRefresh);
-      resizeRefresh=setTimeout(()=>{
-        const config=window.thunder68Presentation.state()?.config;
-        if(root.querySelector('.keyboard_image') && config && !config.mask)window.thunder68Presentation.selectKeys([...config.mapPendingKey]);
-      },140);
+      resizeRefresh = setTimeout(() => {
+        const config = window.thunder68Presentation?.state()?.config;
+        if (root.querySelector('.keyboard_image') && config && !config.mask) {
+          window.thunder68Presentation.selectKeys([...(config.mapPendingKey || [])]);
+        }
+      }, 140);
     });
-    root.addEventListener('scroll',updateOverlays,true);
+    root.addEventListener('scroll', updateOverlays, true);
+
     const refreshDevice = async () => {
-      try {deviceOpened = (await navigator.hid.getDevices()).some(d => d.opened && d.vendorId === 0x369b); synchronize();} catch {}
+      try {
+        const opened = (await navigator.hid.getDevices()).some(d => d.opened && d.vendorId === 0x369b);
+        const wasOpened = deviceOpened;
+        deviceOpened = opened;
+        if (opened && !wasOpened) {
+          verifyMachine.onDeviceOpened();
+        } else if (!opened && wasOpened) {
+          verifyMachine.onLeftConfigOrClosed();
+        }
+        synchronize();
+      } catch {}
     };
-    window.addEventListener('thunder68-device-open', refreshDevice);
-    function returnToDevices() {
-      const label = [...root.querySelectorAll('span')].find(e => e.textContent.trim() === '返回设备列表');
-      if (label) label.parentElement.click();
-    }
-    shell.querySelector('.local-brand').addEventListener('click', e => {e.preventDefault(); returnToDevices();});
-    shell.querySelector('.local-device-link').addEventListener('click', returnToDevices);
-    for (const button of shell.querySelectorAll('[data-page]')) button.addEventListener('click', () => {
-      const tab = tabs[Number(button.dataset.page)];
-      if (tab) {tab.click();const main=root.querySelector('.main-content');if(main)main.scrollTop=0;synchronize();}
+
+    window.addEventListener('thunder68-device-open', () => {
+      verifyMachine.onDeviceOpened();
+      refreshDevice();
     });
+    window.addEventListener('thunder68-device-close', () => {
+      deviceOpened = false;
+      ready = false;
+      verifyMachine.onLeftConfigOrClosed();
+      synchronize();
+    });
+
+    function returnToDevices() {
+      const target = helpers.findExitButton(root);
+      if (!target) return false;
+      target.click();
+      return true;
+    }
+
+    shell.querySelector('.local-brand').addEventListener('click', e => {
+      e.preventDefault();
+      returnToDevices();
+    });
+    shell.querySelector('.local-device-link').addEventListener('click', returnToDevices);
+
+    for (const button of shell.querySelectorAll('[data-page]')) {
+      button.addEventListener('click', () => {
+        const tab = tabs[Number(button.dataset.page)];
+        if (tab) {
+          tab.click();
+          const main = root.querySelector('.main-content');
+          if (main) main.scrollTop = 0;
+          synchronize();
+        }
+      });
+    }
+
     const paper = new Set(['white', '#fff', '#ffffff', 'rgb(255, 255, 255)', 'rgb(242, 244, 245)', 'rgb(254, 254, 254)', 'rgb(238, 238, 238)']);
     const muted = new Set(['rgb(217, 217, 217)', 'rgb(196, 196, 196)', 'rgb(221, 221, 221)', 'rgb(204, 204, 204)', 'rgb(153, 153, 153)', 'rgb(243, 243, 243)']);
     const accent = new Set(['rgb(234, 84, 19)', '#ea5413', 'rgb(255, 222, 173)']);
     const ink = new Set(['black', '#000', 'rgb(0, 0, 0)', 'rgb(51, 51, 51)', 'rgb(34, 34, 34)', 'rgb(82, 82, 82)', 'rgb(31, 31, 31)']);
-    const mark = (node, key, value) => {if (node.dataset[key] !== value) node.dataset[key] = value;};
+    const mark = (node, key, value) => { if (node.dataset[key] !== value) node.dataset[key] = value; };
+
     const classify = node => {
       if (node.closest('.colorplate,.color-slider,.color_board')) return;
-      if(node.tagName==='IMG' && node.title && node.parentElement?.nextElementSibling?.tagName==='SPAN'){
-        const tile=node.parentElement.parentElement;
-        tile.classList.add('local-action-tile');tile.parentElement.classList.add('local-action-grid');tile.parentElement.parentElement.classList.add('local-action-catalog');
+      if (node.tagName === 'IMG' && node.title && node.parentElement?.nextElementSibling?.tagName === 'SPAN') {
+        const tile = node.parentElement.parentElement;
+        tile.classList.add('local-action-tile');
+        tile.parentElement.classList.add('local-action-grid');
+        tile.parentElement.parentElement.classList.add('local-action-catalog');
       }
-      if(node.tagName==='IMG' && ['DKS','SOCD','MT','TGL','MPT','END'].includes(node.alt) && node.parentElement.style.width==='30%'){
-        node.parentElement.classList.add('local-super-card');node.parentElement.parentElement.classList.add('local-super-catalog');
+      if (node.tagName === 'IMG' && ['DKS', 'SOCD', 'MT', 'TGL', 'MPT', 'END'].includes(node.alt) && node.parentElement.style.width === '30%') {
+        node.parentElement.classList.add('local-super-card');
+        node.parentElement.parentElement.classList.add('local-super-catalog');
       }
-      if(!node.children.length && node.tagName==='SPAN'){
-        const descriptions={'按键在按压到固定位置后触发，回弹到固定位置后释放。触发行程越低，物理响应越快，但更容易误触触发按键所需要的按下的距离':'按下多深才触发。数值越小，触发越快，也更容易误触。','通过动态地触发和重置按键，实现更快的按键操作。当您意图按下或释放按键时，快速触发会立即触发按键的动作，并在达到触发点后自动重置按键。这样可以减少按键的延迟和提高响应速度。':'根据按键的移动距离触发与复位，不必回到固定位置。适合需要连续快速按键的操作。','灵敏度决定了按键抬起（重置）和再次按下按键（触发）所需的键程':'再次按下或抬起多少距离才响应。数值越小越灵敏。','独立的上收/下击灵敏度':'分别设置按下与抬起','如果启用，您可以单独定义快速触发的按下（触发）和抬起（重置）的灵敏度。':'开启后，可分别调整按下触发和抬起复位的距离。'};
-        const replacement=descriptions[node.textContent];if(replacement){node.textContent=replacement;mark(node,'localDescription','true');}
+      if (!node.children.length && node.tagName === 'SPAN') {
+        const descriptions = {
+          '按键在按压到固定位置后触发，回弹到固定位置后释放。触发行程越低，物理响应越快，但更容易误触触发按键所需要的按下的距离': '按下多深才触发。数值越小，触发越快，也更容易误触。',
+          '通过动态地触发和重置按键，实现更快的按键操作。当您意图按下或释放按键时，快速触发会立即触发按键的动作，并在达到触发点后自动重置按键。这样可以减少按键的延迟和提高响应速度。': '根据按键的移动距离触发与复位，不必回到固定位置。适合需要连续快速按键的操作。',
+          '灵敏度决定了按键抬起（重置）和再次按下按键（触发）所需的键程': '再次按下或抬起多少距离才响应。数值越小越灵敏。',
+          '独立的上收/下击灵敏度': '分别设置按下与抬起',
+          '如果启用，您可以单独定义快速触发的按下（触发）和抬起（重置）的灵敏度。': '开启后，可分别调整按下触发和抬起复位的距离。'
+        };
+        const replacement = descriptions[node.textContent];
+        if (replacement) {
+          node.textContent = replacement;
+          mark(node, 'localDescription', 'true');
+        }
       }
-      if (!node.children.length && ['DIV','SPAN','P'].includes(node.tagName) && node.textContent.trim().length > 45) mark(node,'localDescription','true');
-      const bg = node.style.backgroundColor.toLowerCase(), fg = node.style.color.toLowerCase();
+      if (!node.children.length && ['DIV', 'SPAN', 'P'].includes(node.tagName) && node.textContent.trim().length > 45) {
+        mark(node, 'localDescription', 'true');
+      }
+      const bg = node.style.backgroundColor.toLowerCase();
+      const fg = node.style.color.toLowerCase();
       const rgb = bg.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/)?.slice(1).map(Number);
       const neutralPaper = rgb && Math.min(...rgb) >= 170 && Math.max(...rgb) - Math.min(...rgb) <= 12;
       mark(node, 'localSurface', accent.has(bg) ? 'selected' : paper.has(bg) || neutralPaper ? 'paper' : muted.has(bg) ? 'muted' : '');
@@ -221,142 +526,370 @@
         const localGradient = gradient.replace(/rgb\(234,\s*84,\s*19\)|#ea5413/ig, 'var(--ui-accent)').replace(/\bgray\b/ig, 'var(--ui-line)');
         if (node.style.getPropertyValue('--local-gradient') !== localGradient) node.style.setProperty('--local-gradient', localGradient);
         mark(node, 'localGradient', 'true');
-      } else mark(node, 'localGradient', '');
-      if (node.tagName === 'IMG' && /(?:check-mark|_orange|macro_tips|trigger_tips)/i.test(node.getAttribute('src') || '')) mark(node, 'localIcon', 'mono');
-      if (node.style.fontSize === '0.6rem' && node.style.border && node.querySelector('span') && !node.closest('.keyboard_image,.sidebar')) mark(node, 'localControl', 'key');
+      } else {
+        mark(node, 'localGradient', '');
+      }
+      if (node.tagName === 'IMG' && /(?:check-mark|_orange|macro_tips|trigger_tips)/i.test(node.getAttribute('src') || '')) {
+        mark(node, 'localIcon', 'mono');
+      }
+      if (node.style.fontSize === '0.6rem' && node.style.border && node.querySelector('span') && !node.closest('.keyboard_image,.sidebar')) {
+        mark(node, 'localControl', 'key');
+      }
       if (node.tagName === 'INPUT' && node.type === 'range') {
         const percent = (Number(node.value) - Number(node.min || 0)) / (Number(node.max || 100) - Number(node.min || 0)) * 100;
         const progress = Math.max(0, Math.min(100, percent)) + '%';
         if (node.style.getPropertyValue('--local-range-progress') !== progress) node.style.setProperty('--local-range-progress', progress);
       }
-      if (['立即重置', 'Reset Now'].includes(node.textContent.trim()) && (node.tagName === 'BUTTON' || node.children.length === 1)) mark(node, 'localDanger', 'true');
-      if (node.style.cursor === 'pointer' && node.tagName === 'DIV' && !node.closest('.keyboard_image') && !node.hasAttribute('tabindex')) {node.tabIndex = 0; node.setAttribute('role', 'button');}
+      if (helpers.isDangerResetButton(node)) mark(node, 'localDanger', 'true');
+      if (node.style.cursor === 'pointer' && node.tagName === 'DIV' && !node.closest('.keyboard_image') && !node.hasAttribute('tabindex')) {
+        node.tabIndex = 0;
+        node.setAttribute('role', 'button');
+      }
     };
+
     root.addEventListener('keydown', e => {
-      if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('div[role="button"][tabindex="0"]')) {e.preventDefault(); e.target.click();}
+      if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('div[role="button"][tabindex="0"]')) {
+        e.preventDefault();
+        e.target.click();
+      }
     });
+
     function synchronize() {
-      const main = root.querySelector('.main-content'), connectedPage = !!main;
+      const main = root.querySelector('.main-content');
+      const connectedPage = !!main;
+      const state = window.thunder68Presentation?.state();
+      const sidebarEl = root.querySelector('.sidebar');
+      const modalVisible = !!root.querySelector('.sidebar .modal-overlay');
+
       document.body.classList.toggle('local-config', connectedPage);
       document.body.classList.toggle('local-home', !connectedPage);
+      document.body.classList.toggle('local-modal-open', modalVisible);
+
+      if (modalVisible) {
+        clearTimeout(connectionTimer);
+        connectButton.disabled = false;
+      }
+
       for (const node of root.querySelectorAll('[style]')) classify(node);
       shell.querySelector('.local-device-link').classList.toggle('is-active', !connectedPage);
+
+      // Update sidebar-derived device info (2.4G mode, battery, official build version)
+      const deviceInfo = helpers.extractDeviceStatusInfo(state, sidebarEl);
+      const railMode = shell.querySelector('.local-rail-mode');
+      if (railMode) {
+        const batText = deviceInfo.battery !== null ? ` · 电量 ${deviceInfo.battery}%` : '';
+        railMode.textContent = `磁轴键盘 · ${deviceInfo.modeLabel}${batText}`;
+      }
+      const railVersion = shell.querySelector('.local-rail-version');
+      if (railVersion) {
+        railVersion.hidden = !deviceInfo.officialVersion;
+        if (deviceInfo.officialVersion) railVersion.textContent = `内核 ${deviceInfo.officialVersion}`;
+      }
+
+      const reading = helpers.isReadingConfig(root.textContent, state);
+
       if (main) {
-        const state=window.thunder68Presentation.state();
-        if(!storeSubscribed && state){storeSubscribed=true;window.thunder68Presentation.subscribe(()=>requestAnimationFrame(synchronize));}
-        const tabbar = main.querySelector('.local-original-tabs') || [...main.querySelectorAll('span')].find(e => e.textContent.trim() === '按键定义')?.parentElement.parentElement;
-        tabs = tabbar ? [...tabbar.children].slice(0,6) : [];
+        if (!storeSubscribed && state) {
+          storeSubscribed = true;
+          window.thunder68Presentation.subscribe(() => requestAnimationFrame(synchronize));
+        }
+
+        const tabbar = helpers.findTabbarInMain(main);
+        tabs = tabbar ? [...tabbar.children].slice(0, 6) : [];
         if (tabbar && !tabbar.classList.contains('local-original-tabs')) tabbar.classList.add('local-original-tabs');
-        const selected = tabs.findIndex(t => t?.dataset.localSurface === 'selected'), index = selected < 0 ? 0 : selected;
-        currentIndex=index;
-        for(const button of shell.querySelectorAll('.local-nav-item'))button.disabled=!!state?.config?.mask;
-        document.body.dataset.localPage=String(index);
-        document.body.classList.toggle('local-bridge-unavailable',!state);
-        const interactive=[0,2,3].includes(index);
-        shell.querySelector('.local-board-instruction').textContent=interactive ? '点击选择按键；再次点击取消。参数调整作用于全部已选按键。' : '预览当前键盘。右侧调整整机设置。';
-        shell.querySelector('.local-selection').classList.toggle('is-preview',!interactive);
-        shell.querySelector('.local-reset-keys').hidden=![0,3].includes(index);
-        for (const btn of shell.querySelectorAll('[data-page]')) {const active = Number(btn.dataset.page) === index; btn.classList.toggle('is-active', active); btn.setAttribute('aria-current', active ? 'page' : 'false');}
+
+        const selected = tabs.findIndex(t => t?.dataset.localSurface === 'selected');
+        const index = selected < 0 ? 0 : selected;
+        currentIndex = index;
+
+        for (const button of shell.querySelectorAll('.local-nav-item')) button.disabled = !!state?.config?.mask;
+        document.body.dataset.localPage = String(index);
+        document.body.classList.toggle('local-bridge-unavailable', !state);
+
+        const interactive = [0, 2, 3].includes(index);
+        shell.querySelector('.local-board-instruction').textContent = interactive
+          ? '点击选择按键；再次点击取消。参数调整作用于全部已选按键。'
+          : '预览当前键盘。右侧调整整机设置。';
+        shell.querySelector('.local-selection').classList.toggle('is-preview', !interactive);
+        shell.querySelector('.local-reset-keys').hidden = ![0, 3].includes(index);
+
+        for (const btn of shell.querySelectorAll('[data-page]')) {
+          const active = Number(btn.dataset.page) === index;
+          btn.classList.toggle('is-active', active);
+          btn.setAttribute('aria-current', active ? 'page' : 'false');
+        }
         shell.querySelector('.local-page-heading h1').textContent = pages[index][0];
         shell.querySelector('.local-page-heading p').textContent = pages[index][2];
+
         const keyboard = main.querySelector('.keyboard_image');
-        if (keyboard && !keyboard.parentElement.parentElement.classList.contains('local-keyboard-stage')) keyboard.parentElement.parentElement.classList.add('local-keyboard-stage');
-        if(keyboard){keyboard.parentElement.classList.add('local-board-center');keyboard.nextElementSibling?.classList.add('local-board-modes');}
-        if (tabbar?.nextElementSibling && !tabbar.nextElementSibling.classList.contains('local-settings-panel')) tabbar.nextElementSibling.classList.add('local-settings-panel');
-        for(const part of main.querySelectorAll('.leftpart'))part.parentElement.classList.add('local-field-columns');
-        if(index===1){const lightTab=[...main.querySelectorAll('button')].find(e=>e.textContent.trim()==='主键灯');if(lightTab){lightTab.parentElement.classList.add('local-light-tabs');if(lightTab.parentElement.parentElement!==main.querySelector('.local-settings-panel'))lightTab.parentElement.parentElement.classList.add('local-light-layout');}}
-        const selection=state?.config?.mapPendingKey || [];
-        for(const tile of main.querySelectorAll('.local-action-tile')){
-          tile.inert=!selection.length||!!state?.config?.mask||!deviceOpened;
-          tile.setAttribute('aria-disabled',String(tile.inert));
+        if (keyboard && !keyboard.parentElement.parentElement.classList.contains('local-keyboard-stage')) {
+          keyboard.parentElement.parentElement.classList.add('local-keyboard-stage');
         }
-        const combinationApply=main.querySelector('.buttonComposition button');
-        if(combinationApply)combinationApply.disabled=!selection.length||!!state?.config?.mask||!deviceOpened;
-        const panel=main.querySelector('.local-settings-panel');
-        if(panel){
-          panel.dataset.localTab=panel.querySelector('.tab-navigation button.active')?.textContent.trim()||'';
-          document.body.classList.toggle('local-combination',index===0 && panel.dataset.localTab==='组合键');
-          const values=state?.config?.keyValues?.filter(key=>selection.includes(key.id))||[];
-          const mixed=index===2 && new Set(values.map(key=>JSON.stringify([key.travelValue,key.isRTEnabled,key.sensitivity,key.triggerSensitivity,key.resetSensitivity,key.isIndependentSensitivity]))).size>1;
-          panel.dataset.selectionContext=interactive?(selection.length?`编辑 ${selection.length} 个按键 · ${mixed?'当前值不同，调整将统一所选按键':'调整后直接发送'}`:'先在键盘上选择要修改的按键'):'调整键盘的全局设置';
+        if (keyboard) {
+          keyboard.parentElement.classList.add('local-board-center');
+          keyboard.nextElementSibling?.classList.add('local-board-modes');
         }
-        for(const fields of main.querySelectorAll('.local-field-columns'))fields.inert=(index===2 && !selection.length)||!!state?.config?.mask||!deviceOpened;
-        document.body.classList.toggle('local-disconnected',!deviceOpened);
-        const chips=shell.querySelector('.local-key-chips');
-        if(chips.dataset.value!==selection.join('|')){chips.dataset.value=selection.join('|');chips.replaceChildren();for(const id of selection){const chip=document.createElement('button');chip.textContent=id;chip.title=`取消选择 ${id}`;chip.setAttribute('aria-label',`取消选择 ${id}`);chip.addEventListener('click',()=>{const ids=window.thunder68Presentation.state()?.config?.mapPendingKey||[];window.thunder68Presentation.selectKeys(ids.filter(key=>key!==id));});chips.appendChild(chip);}}
-        document.body.classList.toggle('local-has-selection',selection.length>0);
-        document.body.classList.toggle('local-busy',!!state?.config?.mask);
-        const signature=configuration(state?.config),busy=!!state?.config?.mask;
-        if(signature!==observedSignature){observedSignature=signature;stableAt=Date.now();clearTimeout(settleTimer);settleTimer=setTimeout(synchronize,750);}
-        const loaded=state?.config?.keyValues?.length===68&&!root.textContent.includes('正在配置读取')&&Date.now()-stableAt>=700;
-        if(deviceOpened && !busy && loaded){
-          clearTimeout(connectionTimer);shell.querySelector('.local-connect-button').disabled=false;
-          if(!ready){ready=true;if(verifying){feedback(signature===verificationExpected?'已重新读取 · 配置与界面一致':'已重新读取 · 设备返回值与刚才不同，请检查当前参数',signature===verificationExpected?'success':'error');verifying=false;feedbackLocked=true;}else if(!feedbackLocked)feedback('已读取键盘当前配置 · 修改后可重新读取核对','success');}
-          else if(lastConfiguration && signature!==lastConfiguration && !verifying && Date.now()-lastEditAt<3000){feedbackLocked=false;feedback('当前设置已更新 · 设备结果待重新读取核对');}
-          else if(lastBusy && !feedbackLocked)feedback(Date.now()-lastEditAt<3000?'操作已完成 · 重新读取可核对当前值':'当前配置已就绪','success');
-          lastConfiguration=signature;
-        }else if(busy && !lastBusy){feedback('正在处理，请等待…');}if(!busy && loaded)lastBusy=false;else if(busy)lastBusy=true;
-        verify.hidden=!deviceOpened;verify.disabled=busy||verifying||!loaded;
-        updateKeyDetails(state?.config,selection);
-        for(const button of palette.querySelectorAll('.local-function-key'))button.disabled=!selection.length || !!state?.config?.mask;
-        shell.querySelector('.local-selection-label').textContent=selection.length ? `已选择 ${selection.slice(0,3).join('、')}${selection.length>3 ? ` 等 ${selection.length} 键` : ''}` : '未选择按键';
-        shell.querySelector('.local-selection-label').title=selection.join('、');
-        for(const button of shell.querySelectorAll('[data-select]'))button.disabled=!!state?.config?.triggerMode?.triggerIndex || busy || !deviceOpened;
-        shell.querySelector('.local-clear-selection').disabled=!selection.length;
-        const nativePalette=[...root.querySelectorAll('[data-local-control=key]')].filter(node=>node.textContent.trim());
-        document.body.classList.toggle('local-custom-palette',index===0 && nativePalette.length>30);
-        const paletteTab=panel?.dataset.localTab||'';
-        if(nativePalette.length>30 && (palette.dataset.tab!==paletteTab || nativePalette.length!==paletteNodes.length || nativePalette[0]!==paletteNodes[0])){
-          palette.dataset.tab=paletteTab;
-          paletteNodes=nativePalette;
-          const grid=palette.querySelector('.local-palette-grid');grid.replaceChildren();
-          const groups=['字母与数字','功能与修饰键','符号与小键盘'].map(label=>{const section=document.createElement('section');section.className='local-function-group';const heading=document.createElement('h3');heading.textContent=label;const keys=document.createElement('div');section.append(heading,keys);grid.appendChild(section);return keys;});
-          const shortNames={PrintScreen:'PrtSc',ScrollLock:'ScrLk',PauseBreak:'Pause',NumLock:'Num',Backspace:'Bksp',Insert:'Ins',Delete:'Del',CapsLock:'Caps'};
-          const seenNames=new Map();
-          for(const native of nativePalette){
-            const name=native.textContent.replace(/\s+/g,' ').trim(),flat=name.replace(/\s/g,'');
-            const button=document.createElement('button');button.type='button';button.className='local-function-key';button.textContent=shortNames[flat]||name;
-            if(/^[^\w]?\d$/.test(flat))button.textContent=flat.slice(-1);
-            button.dataset.search=(name+' '+(name==='Space'?'空格':name==='Enter'?'回车':name==='Backspace'?'退格':name==='Ctrl'?'控制':name==='Shift'?'换挡':'')).toLowerCase();button.title=`分配为 ${name}`;button.addEventListener('click',()=>{
-              const active=root.querySelector('.local-settings-panel .tab-navigation button.active')?.textContent.trim();
-              if(active!==paletteTab || !native.isConnected || !window.thunder68Presentation.state()?.config?.mapPendingKey?.length){
-                feedback('界面已切换，请在当前分类重新选择功能。');synchronize();return;
+        if (tabbar?.nextElementSibling && !tabbar.nextElementSibling.classList.contains('local-settings-panel')) {
+          tabbar.nextElementSibling.classList.add('local-settings-panel');
+        }
+        for (const part of main.querySelectorAll('.leftpart')) part.parentElement.classList.add('local-field-columns');
+
+        if (index === 1) {
+          const lightTabContainer = helpers.findLightTabContainer(main);
+          if (lightTabContainer) {
+            lightTabContainer.classList.add('local-light-tabs');
+            if (lightTabContainer.parentElement && lightTabContainer.parentElement !== main.querySelector('.local-settings-panel')) {
+              lightTabContainer.parentElement.classList.add('local-light-layout');
+            }
+          }
+        }
+
+        const selection = state?.config?.mapPendingKey || [];
+        const busy = !!state?.config?.mask;
+
+        for (const tile of main.querySelectorAll('.local-action-tile')) {
+          tile.inert = !selection.length || busy || !deviceOpened;
+          tile.setAttribute('aria-disabled', String(tile.inert));
+        }
+        const combinationApply = main.querySelector('.buttonComposition button');
+        if (combinationApply) combinationApply.disabled = !selection.length || busy || !deviceOpened;
+
+        const panel = main.querySelector('.local-settings-panel');
+        let subtabKey = '';
+        if (panel) {
+          const navButtons = [...panel.querySelectorAll('.tab-navigation button')];
+          const activeTabBtn = panel.querySelector('.tab-navigation button.active');
+          panel.dataset.localTab = activeTabBtn?.textContent.trim() || '';
+          subtabKey = index === 0 ? helpers.identifyKeymapSubtab(activeTabBtn, navButtons, panel) : '';
+          panel.dataset.localTabKey = subtabKey;
+          document.body.classList.toggle('local-combination', index === 0 && subtabKey === 'combination');
+
+          const values = state?.config?.keyValues?.filter(key => selection.includes(key.id)) || [];
+          const mixed = index === 2 && new Set(values.map(key => JSON.stringify([
+            key.travelValue, key.isRTEnabled, key.sensitivity,
+            key.triggerSensitivity, key.resetSensitivity, key.isIndependentSensitivity
+          ]))).size > 1;
+          panel.dataset.selectionContext = interactive
+            ? (selection.length ? `编辑 ${selection.length} 个按键 · ${mixed ? '当前值不同，调整将统一所选按键' : '调整后直接发送'}` : '先在键盘上选择要修改的按键')
+            : '调整键盘的全局设置';
+        }
+
+        for (const fields of main.querySelectorAll('.local-field-columns')) {
+          fields.inert = (index === 2 && !selection.length) || busy || !deviceOpened;
+        }
+        document.body.classList.toggle('local-disconnected', !deviceOpened);
+
+        const chips = shell.querySelector('.local-key-chips');
+        if (chips.dataset.value !== selection.join('|')) {
+          chips.dataset.value = selection.join('|');
+          chips.replaceChildren();
+          for (const id of selection) {
+            const chip = document.createElement('button');
+            chip.textContent = id;
+            chip.title = `取消选择 ${id}`;
+            chip.setAttribute('aria-label', `取消选择 ${id}`);
+            chip.addEventListener('click', () => {
+              const ids = window.thunder68Presentation?.state()?.config?.mapPendingKey || [];
+              window.thunder68Presentation.selectKeys(ids.filter(key => key !== id));
+            });
+            chips.appendChild(chip);
+          }
+        }
+        document.body.classList.toggle('local-has-selection', selection.length > 0);
+        document.body.classList.toggle('local-busy', busy);
+
+        const now = Date.now();
+        const signature = configuration(state?.config);
+        const keyCount = state?.config?.keyValues?.length || 0;
+        const vState = verifyMachine.getState();
+
+        if (vState.active) {
+          if (verifyMachine.observeConfig(signature, now)) {
+            clearTimeout(settleTimer);
+            settleTimer = setTimeout(synchronize, 750);
+          }
+          const result = verifyMachine.evaluate({connectedPage, deviceOpened, busy, reading, keyCount, now});
+          if (result.done) {
+            clearTimeout(connectionTimer);
+            resetVerifyTimers();
+            connectButton.disabled = false;
+            ready = true;
+            lastConfiguration = result.signature;
+            observedSignature = result.signature;
+            stableAt = now;
+            feedback(
+              result.matched
+                ? '已重新读取 · 配置与界面一致'
+                : '已重新读取 · 设备返回值与刚才不同，请检查当前参数',
+              result.matched ? 'success' : 'error'
+            );
+            feedbackLocked = true;
+          }
+        } else {
+          if (signature !== observedSignature) {
+            observedSignature = signature;
+            stableAt = now;
+            clearTimeout(settleTimer);
+            settleTimer = setTimeout(synchronize, 750);
+          }
+          const loaded = keyCount === 68 && !reading && stableAt > 0 && now - stableAt >= 700;
+          if (deviceOpened && !busy && loaded) {
+            clearTimeout(connectionTimer);
+            connectButton.disabled = false;
+            if (!ready) {
+              ready = true;
+              if (!feedbackLocked) feedback('已读取键盘当前配置 · 修改后可重新读取核对', 'success');
+            } else if (lastConfiguration && signature !== lastConfiguration && Date.now() - lastEditAt < 3000) {
+              feedbackLocked = false;
+              feedback('当前设置已更新 · 设备结果待重新读取核对');
+            } else if (lastBusy && !feedbackLocked) {
+              feedback(Date.now() - lastEditAt < 3000 ? '操作已完成 · 重新读取可核对当前值' : '当前配置已就绪', 'success');
+            }
+            lastConfiguration = signature;
+          } else if (busy && !lastBusy) {
+            feedback('正在处理，请等待…');
+          }
+          if (!busy && loaded) lastBusy = false;
+          else if (busy) lastBusy = true;
+        }
+
+        const isVerifying = verifyMachine.getState().active;
+        const loadedForActions = keyCount === 68 && !reading && stableAt > 0 && now - stableAt >= 700;
+        verify.hidden = !deviceOpened;
+        verify.disabled = busy || isVerifying || !loadedForActions;
+
+        const hasFileInput = !!root.querySelector('#fileInput');
+        importBtn.hidden = !deviceOpened || !hasFileInput;
+        importBtn.disabled = busy || isVerifying || !deviceOpened;
+
+        updateKeyDetails(state?.config, selection);
+        for (const button of palette.querySelectorAll('.local-function-key')) {
+          button.disabled = !selection.length || busy || !deviceOpened;
+        }
+        shell.querySelector('.local-selection-label').textContent = selection.length
+          ? `已选择 ${selection.slice(0, 3).join('、')}${selection.length > 3 ? ` 等 ${selection.length} 键` : ''}`
+          : '未选择按键';
+        shell.querySelector('.local-selection-label').title = selection.join('、');
+        for (const button of shell.querySelectorAll('[data-select]')) {
+          button.disabled = !!state?.config?.triggerMode?.triggerIndex || busy || !deviceOpened;
+        }
+        shell.querySelector('.local-clear-selection').disabled = !selection.length;
+
+        const nativePalette = [...root.querySelectorAll('[data-local-control=key]')].filter(node => node.textContent.trim());
+        document.body.classList.toggle('local-custom-palette', index === 0 && nativePalette.length > 30);
+        const paletteTabKey = subtabKey || panel?.dataset.localTab || '';
+        if (nativePalette.length > 30 && (palette.dataset.tab !== paletteTabKey || nativePalette.length !== paletteNodes.length || nativePalette[0] !== paletteNodes[0])) {
+          palette.dataset.tab = paletteTabKey;
+          paletteNodes = nativePalette;
+          const grid = palette.querySelector('.local-palette-grid');
+          grid.replaceChildren();
+          const groups = ['字母与数字', '功能与修饰键', '符号与小键盘'].map(label => {
+            const section = document.createElement('section');
+            section.className = 'local-function-group';
+            const heading = document.createElement('h3');
+            heading.textContent = label;
+            const keys = document.createElement('div');
+            section.append(heading, keys);
+            grid.appendChild(section);
+            return keys;
+          });
+          const seenNames = new Map();
+          for (const native of nativePalette) {
+            const info = helpers.classifyPaletteKey(native.textContent, seenNames);
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'local-function-key';
+            button.textContent = info.label;
+            button.dataset.search = info.search;
+            button.title = info.title;
+            button.addEventListener('click', () => {
+              const currentPanel = root.querySelector('.local-settings-panel');
+              const navButtons = [...(currentPanel?.querySelectorAll('.tab-navigation button') || [])];
+              const activeBtn = currentPanel?.querySelector('.tab-navigation button.active');
+              const activeKey = helpers.identifyKeymapSubtab(activeBtn, navButtons, currentPanel) || activeBtn?.textContent.trim() || '';
+              if (activeKey !== paletteTabKey || !native.isConnected || !window.thunder68Presentation?.state()?.config?.mapPendingKey?.length) {
+                feedback('界面已切换，请在当前分类重新选择功能。');
+                synchronize();
+                return;
               }
+              lastEditAt = Date.now();
               native.click();
             });
-            const repeat=seenNames.get(flat)||0;seenNames.set(flat,repeat+1);
-            if(repeat && /^[0-9]$/.test(flat))button.textContent=`Num ${flat}`;
-            else if(repeat && /^(Ctrl|Alt|Shift|Win)$/.test(flat)){button.textContent=`${flat} R`;button.title=`分配为右 ${flat}`;}
-            const group=repeat && /^[0-9]$/.test(flat)?2:/^[A-Z]$/.test(flat)||/^[^\w]?\d$/.test(flat)?0:/^(F\d+|Esc|Ctrl|Alt|Shift|Win|Space|Tab|CapsLock|Backspace|Enter|Insert|Home|End|PgUp|PgDn|Delete|PrintScreen|ScrollLock|PauseBreak|Fn)$/.test(flat)?1:2;
-            groups[group].appendChild(button);
+            groups[info.group].appendChild(button);
           }
           filterPalette();
-          for(const button of palette.querySelectorAll('.local-function-key'))button.disabled=!selection.length || !!state?.config?.mask;
+          for (const button of palette.querySelectorAll('.local-function-key')) {
+            button.disabled = !selection.length || busy || !deviceOpened;
+          }
         }
         updateOverlays();
       } else {
-        ready=false;lastConfiguration=null;verify.hidden=true;
-        parameterCanvas.setAttribute('hidden','');
-        document.body.classList.remove('local-custom-palette');
-        shell.querySelector('.local-page-heading h1').textContent='我的设备';
-        shell.querySelector('.local-page-heading p').textContent='连接键盘，读取并调整你的配置。';
+        ready = false;
+        lastConfiguration = null;
+        verify.hidden = true;
+        importBtn.hidden = true;
+        parameterCanvas.setAttribute('hidden', '');
+        document.body.classList.remove('local-custom-palette', 'local-combination');
+        shell.querySelector('.local-page-heading h1').textContent = '我的设备';
+        shell.querySelector('.local-page-heading p').textContent = '连接键盘，读取并调整你的配置。';
         tabs = [];
+
         const container = root.querySelector('.device-container');
-        if (container) for (const child of container.children) {
-          const label = child.querySelector('span');
-          const cls = label ? (label.textContent.trim() === '新增设备' ? 'local-add-device' : 'local-saved-device') : 'local-connection-hint';
-          if (!child.classList.contains(cls)) child.classList.add(cls);
-          if (label) child.setAttribute('aria-label', '连接 ' + label.textContent.trim());
+        if (container) {
+          for (const child of container.children) {
+            const label = child.querySelector('span');
+            const cls = label
+              ? (helpers.isAddDeviceElement(child) ? 'local-add-device' : 'local-saved-device')
+              : 'local-connection-hint';
+            if (!child.classList.contains(cls)) child.classList.add(cls);
+            if (label) child.setAttribute('aria-label', '连接 ' + label.textContent.trim());
+          }
+        }
+
+        // Event-driven reconnect during verify once we have genuinely left config view
+        const vState = verifyMachine.getState();
+        if (vState.active) {
+          verifyMachine.onLeftConfigOrClosed();
+          if (!verifyMachine.getState().connectTriggered && !modalVisible) {
+            const entry = helpers.findDeviceEntry(container);
+            if (entry) {
+              verifyMachine.markConnectTriggered();
+              resetVerifyTimers();
+              connect();
+            }
+          }
         }
       }
-      const reading = root.textContent.includes('正在配置读取'), status = shell.querySelector('.local-status');
+
+      const status = shell.querySelector('.local-status');
       status.classList.toggle('is-connected', connectedPage && deviceOpened && !reading);
-      status.querySelector('span').textContent = connectedPage ? (reading ? '正在读取配置' : deviceOpened ? 'USB 已连接' : 'USB 已断开') : '等待连接';
+      const batBadge = deviceInfo.battery !== null ? ` · ${deviceInfo.battery}%` : '';
+      status.querySelector('span').textContent = modalVisible
+        ? '等待无线配对/确认'
+        : connectedPage
+          ? (reading ? '正在读取配置' : deviceOpened ? `${deviceInfo.modeLabel} 已连接${batBadge}` : '设备已断开')
+          : '等待连接';
     }
+
     let pending = false;
-    new MutationObserver(() => {if (pending) return; pending = true; requestAnimationFrame(() => {pending = false; synchronize();});}).observe(root, {childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class']});
-    navigator.hid?.addEventListener('disconnect', refreshDevice);
-    navigator.hid?.addEventListener('disconnect',()=>{ready=false;feedbackLocked=true;feedback('键盘已断开。重新插入 USB，然后返回“我的设备”连接。','error');});
+    new MutationObserver(() => {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(() => {
+        pending = false;
+        synchronize();
+      });
+    }).observe(root, {childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class']});
+
+    navigator.hid?.addEventListener('disconnect', () => {
+      deviceOpened = false;
+      ready = false;
+      feedbackLocked = true;
+      verifyMachine.onLeftConfigOrClosed();
+      feedback('键盘已断开。重新插入 USB 或检查 2.4G 连接，然后返回“我的设备”重连。', 'error');
+      refreshDevice();
+    });
+
     if (navigator.hid) refreshDevice();
     synchronize();
   });
