@@ -2,6 +2,7 @@ node_modules/
 release/
 data/
 output/
+NVIDIA Corporation/
 research/decoded.js
 research/official-main.js
 app/vendor/
