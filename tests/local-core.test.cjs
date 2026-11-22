@@ -19,7 +19,16 @@ const {
   getDeviceConnectionKind,
   formatDeviceChoice,
   resolveWritableDataDir,
-  shouldPackageAppFile
+  shouldPackageAppFile,
+  normalizePreferences,
+  mergePreferences,
+  loadPreferencesSync,
+  savePreferencesSync,
+  resolveEffectiveTheme,
+  getThemeWindowChrome,
+  injectInitialThemeIntoHtml,
+  sanitizeWindowBounds,
+  shouldTriggerLowBatteryAlert
 } = require('../app/local-core.cjs');
 
 const root = path.resolve(__dirname, '../app/vendor');
@@ -199,4 +208,74 @@ test('diagnostic sanitization redacts personal paths and drops unwhitelisted/key
   assert.equal(reportText.includes('Alice'), false);
   assert.equal(reportText.includes('MUST_NOT_LEAK'), false);
   assert.equal(reportText.includes('NotAllowedError'), true);
+});
+
+test('preferences persistence, clamping, anti-flash theme chrome, and HTML injection work cleanly', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'thunder68-prefs-'));
+  try {
+    const file = path.join(tmp, 'preferences.json');
+    const defaults = loadPreferencesSync(file);
+    assert.equal(defaults.themeChoice, 'system');
+    assert.equal(defaults.minimizeToTray, true);
+    assert.equal(defaults.windowBounds.width, 1400);
+
+    const saved = savePreferencesSync(file, mergePreferences(defaults, {
+      themeChoice: 'light',
+      minimizeToTray: false,
+      lowBatteryThreshold: 99, // clamped to 50
+      windowBounds: {width: 800, height: 1000, x: 100, y: 120, maximized: true},
+      globalShortcuts: {toggleWindow: 'CommandOrControl+Shift+T'}
+    }));
+    assert.equal(saved.themeChoice, 'light');
+    assert.equal(saved.minimizeToTray, false);
+    assert.equal(saved.lowBatteryThreshold, 50);
+    assert.equal(saved.windowBounds.width, 1024); // clamped to minWidth
+
+    const reloaded = loadPreferencesSync(file);
+    assert.deepEqual(reloaded, saved);
+
+    // Anti-flash chrome & HTML attribute injection
+    assert.equal(resolveEffectiveTheme('light', true), 'light');
+    assert.equal(resolveEffectiveTheme('system', false), 'light');
+    assert.equal(resolveEffectiveTheme('system', true), 'dark');
+    assert.equal(getThemeWindowChrome('light').backgroundColor, '#f5f6f7');
+    assert.equal(getThemeWindowChrome('dark').backgroundColor, '#111214');
+
+    const injected = injectInitialThemeIntoHtml('<!doctype html><html lang="en"><head></head></html>', 'light', 'light');
+    assert.match(injected, /<html data-theme="light" data-theme-choice="light" lang="en">/);
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+});
+
+test('sanitizeWindowBounds drops offscreen coordinates and keeps visible multi-monitor bounds', () => {
+  const displays = [{x: 0, y: 0, width: 1920, height: 1040}];
+  const visible = sanitizeWindowBounds({x: 100, y: 80, width: 1400, height: 940, maximized: false}, displays);
+  assert.equal(visible.x, 100);
+  assert.equal(visible.y, 80);
+
+  const offscreen = sanitizeWindowBounds({x: 3200, y: 100, width: 1400, height: 940, maximized: false}, displays);
+  assert.equal('x' in offscreen, false);
+  assert.equal('y' in offscreen, false);
+  assert.equal(offscreen.width, 1400);
+});
+
+test('shouldTriggerLowBatteryAlert applies hysteresis and only triggers for 2.4G wireless mode', () => {
+  // Wired mode never alerts
+  assert.deepEqual(
+    shouldTriggerLowBatteryAlert({enabled: true, threshold: 20, isWireless: false, battery: 10, alreadyNotified: false}),
+    {notify: false, nextNotified: false}
+  );
+  // First drop below threshold alerts once
+  const first = shouldTriggerLowBatteryAlert({enabled: true, threshold: 20, isWireless: true, battery: 18, alreadyNotified: false});
+  assert.deepEqual(first, {notify: true, nextNotified: true});
+  // Repeated readings stay muted
+  const second = shouldTriggerLowBatteryAlert({enabled: true, threshold: 20, isWireless: true, battery: 15, alreadyNotified: true});
+  assert.deepEqual(second, {notify: false, nextNotified: true});
+  // Within hysteresis deadband (22% < 25%) remains armed
+  const deadband = shouldTriggerLowBatteryAlert({enabled: true, threshold: 20, isWireless: true, battery: 22, alreadyNotified: true});
+  assert.deepEqual(deadband, {notify: false, nextNotified: true});
+  // Recharged >= threshold + 5 resets state
+  const charged = shouldTriggerLowBatteryAlert({enabled: true, threshold: 20, isWireless: true, battery: 30, alreadyNotified: true});
+  assert.deepEqual(charged, {notify: false, nextNotified: false});
 });

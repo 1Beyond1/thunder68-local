@@ -3204,3 +3204,124 @@ body[data-local-page="5"] #root .local-settings-panel > .tab-navigation + div > 
     grid-template-columns: 1fr;
   }
 }
+
+/* ==================== 14. 桌面伴侣设置面板 ==================== */
+
+.local-companion-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.local-pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-top: 1px solid var(--ui-line);
+}
+
+.local-pref-row:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.local-pref-row strong {
+  display: block;
+  font-size: 13px;
+  color: var(--ui-text);
+}
+
+.local-pref-row p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--ui-muted);
+  line-height: 1.5;
+}
+
+.local-pref-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: var(--ui-accent);
+  cursor: pointer;
+}
+
+.local-pref-row select {
+  background: var(--ui-field);
+  color: var(--ui-text);
+  border: 1px solid var(--ui-line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.local-pref-notice {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--ui-raised);
+  border-left: 3px solid var(--ui-accent);
+  font-size: 12px;
+  color: var(--ui-muted);
+  line-height: 1.6;
+}
+
+.local-mono-pill {
+  font: 600 12px Consolas, monospace;
+  padding: 4px 9px;
+  border-radius: 5px;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-line);
+  color: var(--ui-text);
+  white-space: nowrap;
+}
+
+.local-pref-hotkey-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.local-pref-hotkey-group label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--ui-text);
+}
+
+.local-pref-hotkey-group input {
+  background: var(--ui-field);
+  color: var(--ui-text);
+  border: 1px solid var(--ui-line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: 12px Consolas, monospace;
+}
+
+.local-hotkey-status {
+  font-size: 11px;
+  color: var(--ui-muted);
+}
+
+.local-hotkey-status[data-state="ok"] {
+  color: var(--ui-success);
+}
+
+.local-hotkey-status[data-state="error"] {
+  color: var(--ui-error);
+}
+
+.local-pref-hotkey-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 1150px) {
+  .local-companion-settings-grid {
+    grid-template-columns: 1fr;
+  }
+}

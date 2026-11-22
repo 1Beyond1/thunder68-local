@@ -27,7 +27,7 @@
       {code: 'Minus', label: '-', u: 1, aliases: ['-', '_-']},
       {code: 'Equal', label: '=', u: 1, aliases: ['=', '+=']},
       {code: 'Backspace', label: 'Bksp', u: 2, aliases: ['Backspace', 'BackSpace', 'Bksp']},
-      {code: 'Delete', label: 'Del', u: 1, aliases: ['Del', 'Delete']}
+      {code: 'Insert', label: 'Ins', u: 1, aliases: ['Ins', 'Insert']}
     ],
     [
       {code: 'Tab', label: 'Tab', u: 1.5, aliases: ['Tab']},
@@ -44,7 +44,7 @@
       {code: 'BracketLeft', label: '[', u: 1, aliases: ['[', '{[']},
       {code: 'BracketRight', label: ']', u: 1, aliases: [']', '}]']},
       {code: 'Backslash', label: '\\', u: 1.5, aliases: ['\\', '|\\']},
-      {code: 'PageUp', label: 'PgUp', u: 1, aliases: ['PgUp', 'PageUp']}
+      {code: 'Delete', label: 'Del', u: 1, aliases: ['Del', 'Delete']}
     ],
     [
       {code: 'CapsLock', label: 'Caps', u: 1.75, aliases: ['Caps', 'CapsLock']},
@@ -60,7 +60,7 @@
       {code: 'Semicolon', label: ';', u: 1, aliases: [';', ':;']},
       {code: 'Quote', label: '\'', u: 1, aliases: ['\'', '"\'']},
       {code: 'Enter', label: 'Enter', u: 2.25, aliases: ['Enter']},
-      {code: 'PageDown', label: 'PgDn', u: 1, aliases: ['PgDn', 'PageDown']}
+      {code: 'PageUp', label: 'PgUp', u: 1, aliases: ['PgUp', 'PageUp']}
     ],
     [
       {code: 'ShiftLeft', label: 'LShift', u: 2.25, aliases: ['LShift', 'Shift_L', 'Shift']},
@@ -76,7 +76,7 @@
       {code: 'Slash', label: '/', u: 1, aliases: ['/', '?/']},
       {code: 'ShiftRight', label: 'RShift', u: 1.75, aliases: ['RShift', 'Shift_R']},
       {code: 'ArrowUp', label: '↑', u: 1, aliases: ['Up', '↑', 'ArrowUp']},
-      {code: 'End', label: 'End', u: 1, aliases: ['End', 'Ins', 'Insert']}
+      {code: 'PageDown', label: 'PgDn', u: 1, aliases: ['PgDn', 'PageDown']}
     ],
     [
       {code: 'ControlLeft', label: 'LCtrl', u: 1.25, aliases: ['LCtrl', 'Ctrl_L', 'Ctrl']},

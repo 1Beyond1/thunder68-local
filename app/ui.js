@@ -80,6 +80,7 @@
     if (!['dark', 'light', 'system'].includes(themeChoice)) themeChoice = 'system';
 
     let parameterSignature;
+    let uiInitialized = false;
 
     function applyTheme(notifyHost = true) {
       const resolved = themeChoice === 'system' ? (media.matches ? 'dark' : 'light') : themeChoice;
@@ -90,7 +91,7 @@
         window.thunder68Local?.setTheme?.(resolved, themeChoice);
       }
       parameterSignature = '';
-      if (typeof drawParameters === 'function') drawParameters();
+      if (uiInitialized) drawParameters();
       window.dispatchEvent(new CustomEvent('thunder68-theme-change', {detail: {themeChoice, resolved}}));
     }
     function setThemeChoice(nextChoice, persist = true) {
@@ -1392,6 +1393,7 @@
         return false;
       }
     });
+    uiInitialized = true;
     window.dispatchEvent(new CustomEvent('thunder68-shell-ready'));
 
     if (navigator.hid) refreshDevice();

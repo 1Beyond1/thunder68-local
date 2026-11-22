@@ -365,6 +365,159 @@ function deleteProfileFile(profilesDir, id) {
   return {ok: true};
 }
 
+const DEFAULT_PREFERENCES = Object.freeze({
+  themeChoice: 'system',
+  windowBounds: Object.freeze({
+    x: null,
+    y: null,
+    width: 1400,
+    height: 940,
+    maximized: false
+  }),
+  minimizeToTray: true,
+  autoLaunch: false,
+  lowBatteryAlert: true,
+  lowBatteryThreshold: 20,
+  globalShortcuts: Object.freeze({
+    toggleWindow: 'CommandOrControl+Alt+T',
+    quickSwitchProfile: ''
+  })
+});
+
+function clampNumber(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+function normalizeShortcutAccelerator(raw) {
+  if (typeof raw !== 'string') return '';
+  return raw.trim().slice(0, 64);
+}
+
+function normalizePreferences(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const themeChoice = ['system', 'dark', 'light'].includes(src.themeChoice)
+    ? src.themeChoice
+    : DEFAULT_PREFERENCES.themeChoice;
+
+  const rawBounds = src.windowBounds && typeof src.windowBounds === 'object' ? src.windowBounds : {};
+  const width = clampNumber(rawBounds.width, 1024, 3840, DEFAULT_PREFERENCES.windowBounds.width);
+  const height = clampNumber(rawBounds.height, 720, 2160, DEFAULT_PREFERENCES.windowBounds.height);
+  const x = typeof rawBounds.x === 'number' && Number.isFinite(rawBounds.x) ? Math.round(rawBounds.x) : null;
+  const y = typeof rawBounds.y === 'number' && Number.isFinite(rawBounds.y) ? Math.round(rawBounds.y) : null;
+  const maximized = Boolean(rawBounds.maximized);
+
+  const rawShortcuts = src.globalShortcuts && typeof src.globalShortcuts === 'object' ? src.globalShortcuts : {};
+  const toggleWindow = 'toggleWindow' in rawShortcuts
+    ? normalizeShortcutAccelerator(rawShortcuts.toggleWindow)
+    : DEFAULT_PREFERENCES.globalShortcuts.toggleWindow;
+  const quickSwitchProfile = 'quickSwitchProfile' in rawShortcuts
+    ? normalizeShortcutAccelerator(rawShortcuts.quickSwitchProfile)
+    : DEFAULT_PREFERENCES.globalShortcuts.quickSwitchProfile;
+
+  return {
+    themeChoice,
+    windowBounds: {x, y, width, height, maximized},
+    minimizeToTray: typeof src.minimizeToTray === 'boolean' ? src.minimizeToTray : DEFAULT_PREFERENCES.minimizeToTray,
+    autoLaunch: typeof src.autoLaunch === 'boolean' ? src.autoLaunch : DEFAULT_PREFERENCES.autoLaunch,
+    lowBatteryAlert: typeof src.lowBatteryAlert === 'boolean' ? src.lowBatteryAlert : DEFAULT_PREFERENCES.lowBatteryAlert,
+    lowBatteryThreshold: clampNumber(src.lowBatteryThreshold, 5, 50, DEFAULT_PREFERENCES.lowBatteryThreshold),
+    globalShortcuts: {toggleWindow, quickSwitchProfile}
+  };
+}
+
+function mergePreferences(current, patch) {
+  const base = normalizePreferences(current);
+  const p = patch && typeof patch === 'object' ? patch : {};
+  return normalizePreferences({
+    ...base,
+    ...p,
+    windowBounds: {
+      ...base.windowBounds,
+      ...(p.windowBounds && typeof p.windowBounds === 'object' ? p.windowBounds : {})
+    },
+    globalShortcuts: {
+      ...base.globalShortcuts,
+      ...(p.globalShortcuts && typeof p.globalShortcuts === 'object' ? p.globalShortcuts : {})
+    }
+  });
+}
+
+function loadPreferencesSync(filePath) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return normalizePreferences({});
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return normalizePreferences(parsed);
+  } catch {
+    return normalizePreferences({});
+  }
+}
+
+function savePreferencesSync(filePath, prefs) {
+  const normalized = normalizePreferences(prefs);
+  writeJsonAtomicSync(filePath, normalized);
+  return normalized;
+}
+
+function resolveEffectiveTheme(themeChoice, systemPrefersDark = true) {
+  if (themeChoice === 'light') return 'light';
+  if (themeChoice === 'dark') return 'dark';
+  return systemPrefersDark ? 'dark' : 'light';
+}
+
+function getThemeWindowChrome(resolvedTheme) {
+  if (resolvedTheme === 'light') {
+    return {
+      backgroundColor: '#f5f6f7',
+      titleBarOverlay: {color: '#ffffff', symbolColor: '#181a1d', height: 44}
+    };
+  }
+  return {
+    backgroundColor: '#111214',
+    titleBarOverlay: {color: '#111214', symbolColor: '#f4f5f7', height: 44}
+  };
+}
+
+function injectInitialThemeIntoHtml(html, resolvedTheme, themeChoice) {
+  if (typeof html !== 'string') return html;
+  const safeResolved = resolvedTheme === 'light' ? 'light' : 'dark';
+  const safeChoice = ['system', 'dark', 'light'].includes(themeChoice) ? themeChoice : 'system';
+  return html.replace(/<html(\s|>)/i, `<html data-theme="${safeResolved}" data-theme-choice="${safeChoice}"$1`);
+}
+
+function sanitizeWindowBounds(bounds, workAreas = []) {
+  const normalized = normalizePreferences({windowBounds: bounds}).windowBounds;
+  const out = {width: normalized.width, height: normalized.height, maximized: normalized.maximized};
+  if (normalized.x === null || normalized.y === null || !Array.isArray(workAreas) || !workAreas.length) {
+    return out;
+  }
+  const visible = workAreas.some(area => {
+    if (!area) return false;
+    const overlapX = Math.min(normalized.x + normalized.width, area.x + area.width) - Math.max(normalized.x, area.x);
+    const overlapY = Math.min(normalized.y + normalized.height, area.y + area.height) - Math.max(normalized.y, area.y);
+    return overlapX >= 120 && overlapY >= 80;
+  });
+  if (visible) {
+    out.x = normalized.x;
+    out.y = normalized.y;
+  }
+  return out;
+}
+
+function shouldTriggerLowBatteryAlert({enabled, threshold = 20, isWireless, battery, alreadyNotified = false}) {
+  if (!enabled || !isWireless || typeof battery !== 'number' || !Number.isFinite(battery)) {
+    return {notify: false, nextNotified: isWireless ? alreadyNotified : false};
+  }
+  if (battery <= threshold) {
+    return {notify: !alreadyNotified, nextNotified: true};
+  }
+  if (battery >= threshold + 5) {
+    return {notify: false, nextNotified: false};
+  }
+  return {notify: false, nextNotified: alreadyNotified};
+}
+
 module.exports = {
   LOCAL_ORIGIN,
   SUPPORTED_VENDOR_ID,
@@ -395,5 +548,15 @@ module.exports = {
   readProfileFile,
   saveProfileFile,
   deleteProfileFile,
-  profileCore
+  profileCore,
+  DEFAULT_PREFERENCES,
+  normalizePreferences,
+  mergePreferences,
+  loadPreferencesSync,
+  savePreferencesSync,
+  resolveEffectiveTheme,
+  getThemeWindowChrome,
+  injectInitialThemeIntoHtml,
+  sanitizeWindowBounds,
+  shouldTriggerLowBatteryAlert
 };
