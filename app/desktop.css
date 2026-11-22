@@ -2547,3 +2547,290 @@ body[data-local-page="5"] #root .local-settings-panel > .tab-navigation + div > 
   font-size: 12px;
   font-weight: 600;
 }
+
+/* ==================== 12. 本地配置方案库 ==================== */
+
+.local-profiles-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.local-companion-card {
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-line);
+  border-radius: 10px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.local-companion-card h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.local-card-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.local-muted-note,
+.local-profile-live-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--ui-muted);
+}
+
+.local-profiles-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-line);
+  background: var(--ui-panel);
+  font-size: 13px;
+}
+
+.local-profiles-banner[data-kind="success"] {
+  border-color: var(--ui-success);
+  color: var(--ui-success);
+}
+
+.local-profiles-banner[data-kind="error"] {
+  border-color: var(--ui-error);
+  background: var(--ui-danger-bg);
+  color: var(--ui-error);
+}
+
+.local-profile-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(180px, 1fr) auto;
+  gap: 10px;
+}
+
+.local-profile-form input {
+  background: var(--ui-field);
+  color: var(--ui-text);
+  border: 1px solid var(--ui-line);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.local-tag-picker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ui-muted);
+}
+
+.local-tag-chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--ui-raised);
+  color: var(--ui-muted);
+  border: 1px solid var(--ui-line);
+  font-size: 12px;
+}
+
+.local-tag-chip.is-selected {
+  background: var(--ui-selected);
+  color: var(--ui-accent);
+  border-color: var(--ui-accent);
+  font-weight: 600;
+}
+
+.local-rollback-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px dashed var(--ui-accent);
+  background: var(--ui-panel);
+}
+
+.local-rollback-bar > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.local-rollback-bar span {
+  font-size: 12px;
+  color: var(--ui-muted);
+}
+
+.local-rollback-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.local-profiles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.local-empty-card {
+  grid-column: 1 / -1;
+  padding: 20px;
+  border: 1px dashed var(--ui-line);
+  border-radius: 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ui-muted);
+}
+
+.local-profile-card {
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-line);
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.local-profile-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.local-profile-card-head h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ui-text);
+}
+
+.local-profile-time {
+  font-size: 11px;
+  color: var(--ui-subtle);
+  white-space: nowrap;
+}
+
+.local-profile-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.local-profile-tags span {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ui-selected);
+  color: var(--ui-accent);
+}
+
+.local-profile-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.local-profile-stats span {
+  font: 11px Consolas, "Microsoft YaHei UI", monospace;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: var(--ui-panel);
+  color: var(--ui-muted);
+  border: 1px solid var(--ui-line);
+}
+
+.local-profile-notes {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ui-muted);
+}
+
+.local-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.local-diff-selectors {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--ui-muted);
+}
+
+.local-diff-selectors select {
+  margin-left: 4px;
+  background: var(--ui-field);
+  color: var(--ui-text);
+  border: 1px solid var(--ui-line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.local-diff-summary {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-line);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+
+.local-diff-block {
+  margin-top: 12px;
+}
+
+.local-diff-block h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--ui-muted);
+}
+
+.local-diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.local-diff-table th,
+.local-diff-table td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ui-line);
+}
+
+.local-diff-table th {
+  color: var(--ui-muted);
+  font-weight: 500;
+  background: var(--ui-raised);
+}
+
+.local-diff-table td {
+  font-family: Consolas, "Microsoft YaHei UI", monospace;
+}
+
+@media (max-width: 1150px) {
+  .local-profile-form {
+    grid-template-columns: 1fr;
+  }
+}

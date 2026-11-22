@@ -20,5 +20,13 @@ contextBridge.exposeInMainWorld('thunder68Local', Object.freeze({
     const handler = (_event, payload) => callback(payload);
     ipcRenderer.on('hid-discovery', handler);
     return () => ipcRenderer.removeListener('hid-discovery', handler);
-  }
+  },
+  profiles: Object.freeze({
+    list: () => ipcRenderer.invoke('profiles:list'),
+    get: id => ipcRenderer.invoke('profiles:get', id),
+    save: payload => ipcRenderer.invoke('profiles:save', payload),
+    remove: id => ipcRenderer.invoke('profiles:delete', id),
+    exportFile: options => ipcRenderer.invoke('profiles:exportFile', options),
+    importFile: () => ipcRenderer.invoke('profiles:importFile')
+  })
 }));

@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const profileCore = require('./profile-core.js');
 
 const LOCAL_ORIGIN = 'thunder68://driver';
 const SUPPORTED_VENDOR_ID = 0x369b;
@@ -261,6 +262,109 @@ function shouldPackageAppFile(relativePath) {
   return true;
 }
 
+function resolveProfileFilePath(profilesDir, id) {
+  if (!profilesDir || typeof profilesDir !== 'string' || !profileCore.isValidProfileId(id)) return null;
+  const root = path.resolve(profilesDir);
+  const candidate = path.resolve(root, `${id}.json`);
+  const relative = path.relative(root, candidate);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || relative.includes(path.sep)) {
+    return null;
+  }
+  return candidate;
+}
+
+function writeJsonAtomicSync(filePath, data) {
+  fs.mkdirSync(path.dirname(filePath), {recursive: true});
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf8');
+  fs.renameSync(tmpPath, filePath);
+}
+
+function listProfileSummaries(profilesDir) {
+  if (!fs.existsSync(profilesDir)) return [];
+  const items = [];
+  for (const entry of fs.readdirSync(profilesDir, {withFileTypes: true})) {
+    if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+    const id = entry.name.slice(0, -5);
+    if (!profileCore.isValidProfileId(id)) continue;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(path.join(profilesDir, entry.name), 'utf8'));
+      if (!parsed || typeof parsed !== 'object' || !parsed.config) continue;
+      items.push({
+        id,
+        name: String(parsed.name || id).slice(0, 60),
+        tags: profileCore.normalizeTags(parsed.tags),
+        notes: String(parsed.notes || '').slice(0, 300),
+        source: parsed.source || 'snapshot',
+        isRollback: id === profileCore.ROLLBACK_PROFILE_ID || parsed.source === 'rollback',
+        createdAt: parsed.createdAt || '',
+        updatedAt: parsed.updatedAt || '',
+        summary: parsed.summary || profileCore.summarizeProfileConfig(parsed.config)
+      });
+    } catch {
+      // Ignore corrupt profile files so one bad file never breaks the library
+    }
+  }
+  items.sort((a, b) => {
+    if (a.isRollback !== b.isRollback) return a.isRollback ? -1 : 1;
+    return String(b.updatedAt).localeCompare(String(a.updatedAt));
+  });
+  return items;
+}
+
+function readProfileFile(profilesDir, id) {
+  const filePath = resolveProfileFilePath(profilesDir, id);
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  return parsed;
+}
+
+function saveProfileFile(profilesDir, input) {
+  const sanitized = profileCore.sanitizeProfileConfig(input?.config);
+  const validation = profileCore.validateProfileConfig(sanitized);
+  if (!validation.valid) {
+    return {ok: false, errors: validation.errors, profile: null};
+  }
+  const envelope = profileCore.createProfileEnvelope({
+    id: input?.id,
+    name: input?.name,
+    tags: input?.tags,
+    notes: input?.notes,
+    source: input?.source,
+    createdAt: input?.createdAt,
+    updatedAt: new Date().toISOString(),
+    config: sanitized
+  });
+  const filePath = resolveProfileFilePath(profilesDir, envelope.id);
+  if (!filePath) {
+    return {ok: false, errors: ['无效的方案 ID。'], profile: null};
+  }
+  writeJsonAtomicSync(filePath, envelope);
+  return {
+    ok: true,
+    errors: [],
+    profile: {
+      id: envelope.id,
+      name: envelope.name,
+      tags: envelope.tags,
+      notes: envelope.notes,
+      source: envelope.source,
+      isRollback: envelope.id === profileCore.ROLLBACK_PROFILE_ID || envelope.source === 'rollback',
+      createdAt: envelope.createdAt,
+      updatedAt: envelope.updatedAt,
+      summary: envelope.summary
+    }
+  };
+}
+
+function deleteProfileFile(profilesDir, id) {
+  const filePath = resolveProfileFilePath(profilesDir, id);
+  if (!filePath) return {ok: false, error: '无效的方案 ID。'};
+  if (!fs.existsSync(filePath)) return {ok: false, error: '方案不存在。'};
+  fs.unlinkSync(filePath);
+  return {ok: true};
+}
+
 module.exports = {
   LOCAL_ORIGIN,
   SUPPORTED_VENDOR_ID,
@@ -284,5 +388,12 @@ module.exports = {
   getDeviceConnectionKind,
   formatDeviceChoice,
   resolveWritableDataDir,
-  shouldPackageAppFile
+  shouldPackageAppFile,
+  resolveProfileFilePath,
+  writeJsonAtomicSync,
+  listProfileSummaries,
+  readProfileFile,
+  saveProfileFile,
+  deleteProfileFile,
+  profileCore
 };

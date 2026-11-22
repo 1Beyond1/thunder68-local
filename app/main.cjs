@@ -14,7 +14,12 @@ const {
   resolveAsset,
   getContentType,
   formatDeviceChoice,
-  resolveWritableDataDir
+  resolveWritableDataDir,
+  listProfileSummaries,
+  readProfileFile,
+  saveProfileFile,
+  deleteProfileFile,
+  profileCore
 } = require('./local-core.cjs');
 
 protocol.registerSchemesAsPrivileged([{
@@ -150,9 +155,11 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
     const vendorRoot = path.join(__dirname, 'vendor');
     const localExtras = {
       '/thunder68/local-shell-helpers.js': path.join(__dirname, 'shell-helpers.js'),
+      '/thunder68/local-profile-core.js': path.join(__dirname, 'profile-core.js'),
       '/thunder68/local-desktop.js': path.join(__dirname, 'desktop.js'),
       '/thunder68/local-desktop.css': path.join(__dirname, 'desktop.css'),
       '/thunder68/local-ui.js': path.join(__dirname, 'ui.js'),
+      '/thunder68/local-profiles-panel.js': path.join(__dirname, 'profiles-panel.js'),
       '/thunder68/vendor-bridge.js': path.join(__dirname, 'vendor-bridge.js')
     };
     const cspHeader = "default-src 'self' data: blob:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; object-src 'none'; frame-src 'none'; base-uri 'self'";
@@ -177,7 +184,7 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
         }
         let body = await fsp.readFile(file);
         if (file.toLowerCase().endsWith('index.html')) {
-          const injection = '<link rel="stylesheet" href="/thunder68/local-desktop.css"><script src="/thunder68/local-shell-helpers.js"></script><script src="/thunder68/local-desktop.js"></script><script src="/thunder68/vendor-bridge.js"></script><script src="/thunder68/local-ui.js"></script></head>';
+          const injection = '<link rel="stylesheet" href="/thunder68/local-desktop.css"><script src="/thunder68/local-shell-helpers.js"></script><script src="/thunder68/local-profile-core.js"></script><script src="/thunder68/local-desktop.js"></script><script src="/thunder68/vendor-bridge.js"></script><script src="/thunder68/local-ui.js"></script><script src="/thunder68/local-profiles-panel.js"></script></head>';
           body = Buffer.from(body.toString('utf8').replace('</head>', injection));
         }
         return new Response(body, {
@@ -229,6 +236,84 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
         lastDiscovery: lastHidDiscovery,
         entries: readRecentSanitizedLogs(60)
       };
+    });
+
+    const getProfilesDir = () => path.join(dataDir, 'profiles');
+
+    ipcMain.handle('profiles:list', event => {
+      const win = activeWindow();
+      if (!win || event.sender !== win.webContents) return [];
+      return listProfileSummaries(getProfilesDir());
+    });
+
+    ipcMain.handle('profiles:get', (event, id) => {
+      const win = activeWindow();
+      if (!win || event.sender !== win.webContents) return null;
+      try {
+        return readProfileFile(getProfilesDir(), id);
+      } catch {
+        return null;
+      }
+    });
+
+    ipcMain.handle('profiles:save', (event, payload) => {
+      const win = activeWindow();
+      if (!win || event.sender !== win.webContents) return {ok: false, errors: ['无效窗口上下文。']};
+      const result = saveProfileFile(getProfilesDir(), payload);
+      if (result.ok) {
+        log({event: 'profile-saved', name: result.profile.id});
+      }
+      return result;
+    });
+
+    ipcMain.handle('profiles:delete', (event, id) => {
+      const win = activeWindow();
+      if (!win || event.sender !== win.webContents) return {ok: false, error: '无效窗口上下文。'};
+      const result = deleteProfileFile(getProfilesDir(), id);
+      if (result.ok) log({event: 'profile-deleted', name: String(id || '')});
+      return result;
+    });
+
+    ipcMain.handle('profiles:exportFile', async (event, {id, format = 'profile'} = {}) => {
+      const win = activeWindow();
+      if (!win || event.sender !== win.webContents) return {ok: false, canceled: true};
+      const profile = readProfileFile(getProfilesDir(), id);
+      if (!profile) return {ok: false, error: '找不到指定方案。'};
+      const safeFileName = (profile.name || profile.id).replace(/[<>:"/\\|?*]+/g, '_').slice(0, 50) || profile.id;
+      const dialogResult = await dialog.showSaveDialog(win, {
+        title: '导出配置方案 JSON',
+        defaultPath: `${safeFileName}${format === 'official' ? '.official' : ''}.json`,
+        filters: [{name: 'JSON 配置文件', extensions: ['json']}]
+      });
+      if (dialogResult.canceled || !dialogResult.filePath) return {ok: false, canceled: true};
+      const out = format === 'official'
+        ? profileCore.buildOfficialImportPayload(profile.config)
+        : profile;
+      await fsp.writeFile(dialogResult.filePath, JSON.stringify(out, null, 2), 'utf8');
+      return {ok: true, canceled: false};
+    });
+
+    ipcMain.handle('profiles:importFile', async event => {
+      const win = activeWindow();
+      if (!win || event.sender !== win.webContents) return {ok: false, canceled: true};
+      const dialogResult = await dialog.showOpenDialog(win, {
+        title: '导入配置方案 JSON',
+        properties: ['openFile'],
+        filters: [{name: 'JSON 配置文件', extensions: ['json']}]
+      });
+      if (dialogResult.canceled || !dialogResult.filePaths?.length) return {ok: false, canceled: true};
+      const picked = dialogResult.filePaths[0];
+      const stat = await fsp.stat(picked);
+      if (stat.size > 2 * 1024 * 1024) {
+        return {ok: false, errors: ['配置文件超过 2 MiB 上限，已拒绝导入。']};
+      }
+      const rawText = await fsp.readFile(picked, 'utf8');
+      const fallbackName = path.basename(picked, path.extname(picked)).slice(0, 50) || '导入方案';
+      const parsed = profileCore.parseImportedProfileJson(rawText, fallbackName);
+      if (!parsed.ok) return {ok: false, errors: parsed.errors};
+      const saved = saveProfileFile(getProfilesDir(), parsed.profile);
+      if (saved.ok) log({event: 'profile-imported', name: saved.profile.id});
+      return saved;
     });
 
     mainWindow = new BrowserWindow({
