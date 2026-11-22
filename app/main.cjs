@@ -160,6 +160,7 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
       '/thunder68/local-desktop.css': path.join(__dirname, 'desktop.css'),
       '/thunder68/local-ui.js': path.join(__dirname, 'ui.js'),
       '/thunder68/local-profiles-panel.js': path.join(__dirname, 'profiles-panel.js'),
+      '/thunder68/local-key-tester.js': path.join(__dirname, 'key-tester.js'),
       '/thunder68/vendor-bridge.js': path.join(__dirname, 'vendor-bridge.js')
     };
     const cspHeader = "default-src 'self' data: blob:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; object-src 'none'; frame-src 'none'; base-uri 'self'";
@@ -184,7 +185,7 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
         }
         let body = await fsp.readFile(file);
         if (file.toLowerCase().endsWith('index.html')) {
-          const injection = '<link rel="stylesheet" href="/thunder68/local-desktop.css"><script src="/thunder68/local-shell-helpers.js"></script><script src="/thunder68/local-profile-core.js"></script><script src="/thunder68/local-desktop.js"></script><script src="/thunder68/vendor-bridge.js"></script><script src="/thunder68/local-ui.js"></script><script src="/thunder68/local-profiles-panel.js"></script></head>';
+          const injection = '<link rel="stylesheet" href="/thunder68/local-desktop.css"><script src="/thunder68/local-shell-helpers.js"></script><script src="/thunder68/local-profile-core.js"></script><script src="/thunder68/local-desktop.js"></script><script src="/thunder68/vendor-bridge.js"></script><script src="/thunder68/local-ui.js"></script><script src="/thunder68/local-profiles-panel.js"></script><script src="/thunder68/local-key-tester.js"></script></head>';
           body = Buffer.from(body.toString('utf8').replace('</head>', injection));
         }
         return new Response(body, {
