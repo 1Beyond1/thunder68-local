@@ -10,6 +10,8 @@
     "sync": "node scripts/sync-official.cjs",
     "build": "node scripts/build-portable.cjs",
     "test": "node --test tests/*.test.cjs",
+    "test:vendor": "node --test tests/vendor-assets.check.cjs",
+    "check:compliance": "node scripts/check-compliance.cjs",
     "audit:package": "node scripts/audit-package.cjs"
   },
   "devDependencies": {

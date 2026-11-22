@@ -3,6 +3,9 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {shouldPackageAppFile} = require('../app/local-core.cjs');
 
+const KEPT_LOCALES = Object.freeze(['zh-CN.pak', 'en-US.pak']);
+const KEPT_LOCALES_LOWER = new Set(KEPT_LOCALES.map(name => name.toLowerCase()));
+
 const hashFile = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
 function walkFiles(dir) {
@@ -11,6 +14,53 @@ function walkFiles(dir) {
     const full = path.join(dir, entry.name);
     return entry.isDirectory() ? walkFiles(full) : [full];
   });
+}
+
+function measureDirectory(dir) {
+  if (!fs.existsSync(dir)) return {bytes: 0, files: 0};
+  let bytes = 0;
+  let files = 0;
+  for (const file of walkFiles(dir)) {
+    bytes += fs.statSync(file).size;
+    files++;
+  }
+  return {bytes, files};
+}
+
+function formatMiB(bytes) {
+  return Number((bytes / (1024 * 1024)).toFixed(2));
+}
+
+function shouldKeepLocaleFile(filename, keptSet = KEPT_LOCALES_LOWER) {
+  if (typeof filename !== 'string' || !filename) return false;
+  return keptSet.has(path.basename(filename).toLowerCase());
+}
+
+function pruneLocalesDirectory(localesDir, keptLocales = KEPT_LOCALES) {
+  if (!fs.existsSync(localesDir)) {
+    return {removedCount: 0, removedBytes: 0, keptFiles: [], remainingBytes: 0};
+  }
+  const keptSet = new Set(keptLocales.map(name => name.toLowerCase()));
+  let removedCount = 0;
+  let removedBytes = 0;
+  let remainingBytes = 0;
+  const keptFiles = [];
+
+  for (const entry of fs.readdirSync(localesDir, {withFileTypes: true})) {
+    if (!entry.isFile()) continue;
+    const full = path.join(localesDir, entry.name);
+    const size = fs.statSync(full).size;
+    if (shouldKeepLocaleFile(entry.name, keptSet)) {
+      keptFiles.push(entry.name);
+      remainingBytes += size;
+    } else {
+      fs.unlinkSync(full);
+      removedCount++;
+      removedBytes += size;
+    }
+  }
+  keptFiles.sort();
+  return {removedCount, removedBytes, keptFiles, remainingBytes};
 }
 
 function pruneEmptyDirs(dir, stopAt) {
@@ -72,6 +122,11 @@ function mirrorAppDirectory(sourceAppDir, targetAppDir, filterFn = shouldPackage
 function buildPortable(root = path.resolve(__dirname, '..')) {
   const {runtimeDir} = verifyBuildPrerequisites(root);
   const target = path.join(root, 'release/Thunder68-Local');
+  const hadPreviousBuild = fs.existsSync(target);
+  const previousBuildStats = hadPreviousBuild ? measureDirectory(target) : null;
+  const runtimeLocalesDir = path.join(runtimeDir, 'locales');
+  const runtimeLocalesStats = measureDirectory(runtimeLocalesDir);
+
   fs.mkdirSync(target, {recursive: true});
 
   const copyChanged = (source, destination) => fs.cpSync(source, destination, {
@@ -83,11 +138,26 @@ function buildPortable(root = path.resolve(__dirname, '..')) {
   });
 
   for (const entry of fs.readdirSync(runtimeDir)) {
+    if (entry.toLowerCase() === 'locales') {
+      const targetLocales = path.join(target, entry);
+      fs.mkdirSync(targetLocales, {recursive: true});
+      for (const localeFile of fs.readdirSync(runtimeLocalesDir)) {
+        if (!shouldKeepLocaleFile(localeFile)) continue;
+        const srcLocale = path.join(runtimeLocalesDir, localeFile);
+        const dstLocale = path.join(targetLocales, localeFile);
+        if (!fs.existsSync(dstLocale) || hashFile(srcLocale) !== hashFile(dstLocale)) {
+          fs.copyFileSync(srcLocale, dstLocale);
+        }
+      }
+      continue;
+    }
     copyChanged(
       path.join(runtimeDir, entry),
       path.join(target, entry === 'electron.exe' ? 'Thunder68-Local.exe' : entry)
     );
   }
+
+  const localePrune = pruneLocalesDirectory(path.join(target, 'locales'));
 
   const resources = path.join(target, 'resources/app');
   fs.mkdirSync(resources, {recursive: true});
@@ -100,15 +170,41 @@ function buildPortable(root = path.resolve(__dirname, '..')) {
 
   fs.copyFileSync(path.join(root, 'README.md'), path.join(target, '使用说明.md'));
   fs.copyFileSync(path.join(root, 'DEVELOPMENT.md'), path.join(target, '开发说明.md'));
-  // Keep Electron's LICENSE intact and label the independently authored code separately.
+  // Keep Electron's LICENSE & LICENSES.chromium.html intact and label the independently authored code separately.
   fs.copyFileSync(path.join(root, 'LICENSE'), path.join(target, 'PROJECT-LICENSE'));
   fs.copyFileSync(path.join(root, 'THIRD_PARTY_NOTICES.md'), path.join(target, 'THIRD_PARTY_NOTICES.md'));
 
+  const afterStats = measureDirectory(target);
+  const localesAfterStats = measureDirectory(path.join(target, 'locales'));
+  const localesSavedBytes = Math.max(0, runtimeLocalesStats.bytes - localesAfterStats.bytes);
+  const unprunedEstimateBytes = afterStats.bytes + localesSavedBytes;
+
+  const sizeStats = {
+    unprunedEstimateBytes,
+    unprunedEstimateMiB: formatMiB(unprunedEstimateBytes),
+    afterBytes: afterStats.bytes,
+    afterMiB: formatMiB(afterStats.bytes),
+    savedBytes: localesSavedBytes,
+    savedMiB: formatMiB(localesSavedBytes),
+    previousBuildMiB: previousBuildStats ? formatMiB(previousBuildStats.bytes) : null,
+    localesBeforeFiles: runtimeLocalesStats.files,
+    localesBeforeMiB: formatMiB(runtimeLocalesStats.bytes),
+    localesAfterFiles: localesAfterStats.files,
+    localesAfterMiB: formatMiB(localesAfterStats.bytes),
+    localesPrunedFromPrevious: localePrune.removedCount,
+    keptLocales: localePrune.keptFiles
+  };
+
+  const preservedLicenses = ['LICENSE', 'LICENSES.chromium.html', 'PROJECT-LICENSE', 'THIRD_PARTY_NOTICES.md']
+    .filter(name => fs.existsSync(path.join(target, name)));
+
   console.log(JSON.stringify({
     executable: path.join(target, 'Thunder68-Local.exe'),
-    appSync: syncResult
+    appSync: syncResult,
+    sizeStats,
+    preservedLicenses
   }, null, 2));
-  return {target, syncResult};
+  return {target, syncResult, sizeStats, preservedLicenses};
 }
 
 if (require.main === module) {
@@ -120,4 +216,12 @@ if (require.main === module) {
   }
 }
 
-module.exports = {verifyBuildPrerequisites, mirrorAppDirectory, buildPortable};
+module.exports = {
+  KEPT_LOCALES,
+  measureDirectory,
+  shouldKeepLocaleFile,
+  pruneLocalesDirectory,
+  verifyBuildPrerequisites,
+  mirrorAppDirectory,
+  buildPortable
+};

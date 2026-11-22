@@ -4,8 +4,15 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {discoverAssetPaths, createManifestEntry, planStaleFiles} = require('../scripts/sync-official.cjs');
-const {verifyBuildPrerequisites, mirrorAppDirectory} = require('../scripts/build-portable.cjs');
+const {
+  verifyBuildPrerequisites,
+  mirrorAppDirectory,
+  pruneLocalesDirectory,
+  shouldKeepLocaleFile,
+  measureDirectory
+} = require('../scripts/build-portable.cjs');
 const {runPackageAudit} = require('../scripts/audit-package.cjs');
+const {findForbiddenTrackedFiles} = require('../scripts/check-compliance.cjs');
 
 test('sync-official discovers local assets, builds index.html manifest entry, and plans stale cleanup', () => {
   const html = `
@@ -92,4 +99,64 @@ test('audit-package detects excluded debug scripts and orphan files in release/'
   } finally {
     fs.rmSync(tmp, {recursive: true, force: true});
   }
+});
+
+test('build-portable prunes non-zh-CN/en-US locale packs and reports saved bytes accurately', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'thunder68-locales-'));
+  try {
+    fs.writeFileSync(path.join(tmp, 'zh-CN.pak'), Buffer.alloc(1024, 1));
+    fs.writeFileSync(path.join(tmp, 'en-US.pak'), Buffer.alloc(512, 2));
+    fs.writeFileSync(path.join(tmp, 'fr.pak'), Buffer.alloc(2048, 3));
+    fs.writeFileSync(path.join(tmp, 'ja.pak'), Buffer.alloc(4096, 4));
+
+    assert.equal(shouldKeepLocaleFile('zh-CN.pak'), true);
+    assert.equal(shouldKeepLocaleFile('EN-US.PAK'), true);
+    assert.equal(shouldKeepLocaleFile('fr.pak'), false);
+
+    const before = measureDirectory(tmp);
+    assert.equal(before.files, 4);
+    assert.equal(before.bytes, 1024 + 512 + 2048 + 4096);
+
+    const result = pruneLocalesDirectory(tmp);
+    assert.equal(result.removedCount, 2);
+    assert.equal(result.removedBytes, 2048 + 4096);
+    assert.equal(result.remainingBytes, 1024 + 512);
+    assert.deepEqual(result.keptFiles, ['en-US.pak', 'zh-CN.pak']);
+    assert.equal(fs.existsSync(path.join(tmp, 'fr.pak')), false);
+    assert.equal(fs.existsSync(path.join(tmp, 'zh-CN.pak')), true);
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+});
+
+test('check-compliance detects tracked vendor assets, decoded scripts, and build artifacts', () => {
+  const clean = findForbiddenTrackedFiles([
+    'app/main.cjs',
+    'app/ui.js',
+    'research/asset-paths.json',
+    'THIRD_PARTY_NOTICES.md'
+  ]);
+  assert.deepEqual(clean, []);
+
+  const dirty = findForbiddenTrackedFiles([
+    'app/main.cjs',
+    'app/vendor/manifest.json',
+    'app/vendor/thunder68/index.html',
+    'research/decoded.js',
+    'research/official-main.js',
+    'release/Thunder68-Local/Thunder68-Local.exe',
+    'data/diagnostics.jsonl'
+  ]);
+  assert.equal(dirty.length, 6);
+  assert.deepEqual(
+    dirty.map(v => v.path),
+    [
+      'app/vendor/manifest.json',
+      'app/vendor/thunder68/index.html',
+      'research/decoded.js',
+      'research/official-main.js',
+      'release/Thunder68-Local/Thunder68-Local.exe',
+      'data/diagnostics.jsonl'
+    ]
+  );
 });

@@ -3,7 +3,6 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
-const crypto = require('node:crypto');
 const {
   LOCAL_ORIGIN,
   isKeyboard,
@@ -44,17 +43,6 @@ test('Offline routes resolve to local assets and reject other origins and traver
     'not-a-valid-url'
   ]) {
     assert.equal(resolveAsset(root, url), null, url);
-  }
-});
-
-test('All captured vendor resources match their downloaded hash', () => {
-  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
-  assert.ok(manifest.files.length > 100);
-  assert.equal(manifest.failed.filter(f => /\.(css|js)$/.test(f.path)).length, 0);
-  for (const asset of manifest.files) {
-    const runtimeFile = resolveAsset(root, LOCAL_ORIGIN + asset.path);
-    assert.ok(runtimeFile, asset.path);
-    assert.equal(crypto.createHash('sha256').update(fs.readFileSync(runtimeFile)).digest('hex'), asset.sha256, asset.path);
   }
 });
 
