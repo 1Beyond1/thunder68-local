@@ -318,3 +318,40 @@ test('createVerifyStateMachine prevents stale redux-persist false positives and 
   assert.equal(vm.getState().active, false);
   assert.equal(vm.getState().phase, 'idle');
 });
+
+test('classifyConnectionError separates all 4 troubleshooting categories accurately', () => {
+  const noDev = helpers.classifyConnectionError({event: 'hid-request-result', count: 0, discoveryReason: 'no-device'});
+  assert.equal(noDev.code, 'no-device');
+  assert.ok(noDev.steps.length >= 2);
+
+  const bt = helpers.classifyConnectionError({event: 'hid-request-result', count: 0, discoveryReason: 'bluetooth-unsupported'});
+  assert.equal(bt.code, 'bluetooth-unsupported');
+  assert.match(bt.title, /蓝牙/);
+
+  const busyByName = helpers.classifyConnectionError({event: 'hid-open-error', errorName: 'NotAllowedError', message: 'Failed to open the device.'});
+  assert.equal(busyByName.code, 'device-busy');
+  assert.equal(busyByName.errorName, 'NotAllowedError');
+
+  const busyByMsg = helpers.classifyConnectionError({event: 'hid-open-error', errorName: 'DOMException', message: 'Access is denied (in use)'});
+  assert.equal(busyByMsg.code, 'device-busy');
+
+  const commErr = helpers.classifyConnectionError({event: 'hid-send-error', errorName: 'NetworkError', message: 'Transfer failed'});
+  assert.equal(commErr.code, 'hid-comm-failed');
+
+  const timeoutErr = helpers.classifyConnectionError({timeout: true});
+  assert.equal(timeoutErr.code, 'hid-comm-failed');
+  assert.match(timeoutErr.title, /超时/);
+});
+
+test('isSupportedHotplugDevice and getTravelBadgePalette validate hotplug devices and theme contrast', () => {
+  assert.equal(helpers.isSupportedHotplugDevice({vendorId: 0x369b, productId: 0x0211, collections: [{usagePage: 0xff60, usage: 0x61}]}), true);
+  assert.equal(helpers.isSupportedHotplugDevice({vendorId: 0x369b, productId: 0x0434, collections: [{usagePage: 0xffa0, usage: 2}]}), true);
+  assert.equal(helpers.isSupportedHotplugDevice({vendorId: 0x369b, productId: 0x0211, collections: [{usagePage: 1, usage: 6}]}), false);
+  assert.equal(helpers.isSupportedHotplugDevice({vendorId: 0x046d, productId: 0x0211}), false);
+
+  const darkPalette = helpers.getTravelBadgePalette('dark');
+  const lightPalette = helpers.getTravelBadgePalette('light');
+  assert.notEqual(darkPalette.bg, lightPalette.bg);
+  assert.notEqual(darkPalette.travel, lightPalette.travel);
+  assert.match(darkPalette.bg, /17,\s*18,\s*20/);
+});

@@ -5,6 +5,9 @@ const path = require('node:path');
 const {
   LOCAL_ORIGIN,
   isConfigInterface,
+  classifyHidDiscovery,
+  redactSensitiveText,
+  sanitizeDiagnosticEntry,
   isLocalUrl,
   isAllowedOrigin,
   isAllowedRequestUrl,
@@ -31,6 +34,27 @@ const preferredDataDir = path.resolve(__dirname, app.isPackaged ? '../../../data
 let mainWindow = null;
 let dataDir = defaultUserData;
 let logFile = path.join(dataDir, 'diagnostics.jsonl');
+let lastHidDiscovery = null;
+
+function readRecentSanitizedLogs(limit = 60) {
+  try {
+    if (!fs.existsSync(logFile)) return [];
+    const text = fs.readFileSync(logFile, 'utf8');
+    const lines = text.split(/\r?\n/).filter(Boolean).slice(-Math.max(limit * 2, 120));
+    const parsed = [];
+    for (const line of lines) {
+      try {
+        const safe = sanitizeDiagnosticEntry(JSON.parse(line));
+        if (safe) parsed.push(safe);
+      } catch {
+        // Ignore malformed lines
+      }
+    }
+    return parsed.slice(-limit);
+  } catch {
+    return [];
+  }
+}
 
 function log(event) {
   try {
@@ -83,16 +107,30 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
 
     ses.on('select-hid-device', async (event, details, callback) => {
       event.preventDefault();
+      const discovery = classifyHidDiscovery(details.deviceList);
+      lastHidDiscovery = discovery;
       const candidates = details.deviceList.filter(isConfigInterface);
-      log({event: 'device-selection', candidates: candidates.map(d => ({name: d.name, vendorId: d.vendorId, productId: d.productId}))});
+      log({
+        event: 'device-selection',
+        reason: discovery.reason,
+        count: discovery.configCandidatesCount,
+        candidates: discovery.candidates.map(d => ({name: d.name, vendorId: d.vendorId, productId: d.productId}))
+      });
+      const win = activeWindow();
+      if (win) {
+        win.webContents.send('hid-discovery', discovery);
+      }
       if (candidates.length === 1) return callback(candidates[0].deviceId);
       if (!candidates.length) {
         callback('');
         if (backgroundTest) return;
+        const isBt = discovery.reason === 'bluetooth-unsupported';
         await dialog.showMessageBox(activeWindow(), {
           type: 'info',
-          title: '未找到雷电68',
-          message: '请通过 USB 线或 2.4G 接收器连接雷电68，再点击连接。',
+          title: isBt ? '蓝牙模式不支持 WebHID' : '未找到雷电68',
+          message: isBt
+            ? '检测到雷电68 非配置接口（疑似蓝牙模式），请切换到 USB 有线或 2.4G 接收器模式后再连接。'
+            : '请通过 USB 线或 2.4G 接收器连接雷电68，再点击连接。',
           detail: '如果官网驱动仍开着，请先断开官网中的键盘连接。'
         });
         return;
@@ -173,14 +211,24 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
 
     ipcMain.on('diagnostic', (event, detail) => {
       const win = activeWindow();
-      if (!win || event.sender !== win.webContents || !detail || typeof detail.event !== 'string') return;
-      const safe = {event: detail.event.slice(0, 80)};
-      for (const key of ['name', 'message', 'vendorId', 'productId', 'reportId', 'bytes', 'count']) {
-        if (['string', 'number'].includes(typeof detail[key])) {
-          safe[key] = typeof detail[key] === 'string' ? detail[key].slice(0, 1200) : detail[key];
-        }
-      }
-      log(safe);
+      if (!win || event.sender !== win.webContents) return;
+      const safe = sanitizeDiagnosticEntry(detail);
+      if (safe) log(safe);
+    });
+
+    ipcMain.handle('diagnostics:read', event => {
+      const win = activeWindow();
+      if (!win || event.sender !== win.webContents) return null;
+      return {
+        meta: {
+          appVersion: app.getVersion(),
+          electron: process.versions.electron,
+          platform: process.platform,
+          dataDir: redactSensitiveText(dataDir)
+        },
+        lastDiscovery: lastHidDiscovery,
+        entries: readRecentSanitizedLogs(60)
+      };
     });
 
     mainWindow = new BrowserWindow({

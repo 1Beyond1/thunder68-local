@@ -312,12 +312,160 @@
     if (event === 'page-error' || event === 'page-rejection') return 'page-error';
     if (event === 'hid-open-error' || event === 'hid-send-error' || event === 'hid-request-error') return 'hid-error';
     if (event === 'hid-request-result') return 'hid-request-result';
+    if (event === 'hid-connect') return 'hid-connect';
+    if (event === 'hid-disconnect') return 'hid-disconnect';
     if (event === 'hid-output') return 'hid-output';
     if (event === 'hid-close') return 'hid-close';
     if (event === 'hid-open') return 'hid-open';
     if (event === 'hid-input') return 'hid-input';
     if (event.includes('error')) return 'hid-error';
     return 'other';
+  }
+
+  function isSupportedHotplugDevice(device) {
+    if (!device || device.vendorId !== 0x369b) return false;
+    if (device.productId !== 0x0211 && device.productId !== 0x0434) return false;
+    if (Array.isArray(device.collections) && device.collections.length > 0) {
+      return device.collections.some(
+        c => (c.usagePage === 0xff60 && c.usage === 0x61) || (c.usagePage === 0xffa0 && c.usage === 2)
+      );
+    }
+    return true;
+  }
+
+  function classifyConnectionError(context = {}) {
+    const event = String(context.event || '');
+    const errorName = String(context.errorName || '').trim();
+    const message = String(context.message || '').trim();
+    const discoveryReason = String(context.discoveryReason || '').trim();
+    const combined = `${errorName} ${message}`.toLowerCase();
+
+    if (
+      discoveryReason === 'bluetooth-unsupported' ||
+      /bluetooth|蓝牙|非配置接口/.test(combined)
+    ) {
+      return {
+        code: 'bluetooth-unsupported',
+        severity: 'warning',
+        title: '蓝牙模式不支持 WebHID 配置',
+        summary: '检测到雷电68 或达尔优非配置接口，蓝牙通道无法进行改键、灯光与磁轴行程配置。',
+        steps: [
+          '将键盘模式开关切至「USB 有线」或「2.4G 无线」挡位。',
+          '插稳数据线或 2.4G 接收器，轻按任意键唤醒键盘。',
+          '重新点击「连接键盘」读取当前配置。'
+        ],
+        errorName: errorName || 'UnsupportedMode'
+      };
+    }
+
+    const busyByName = ['NotAllowedError', 'InvalidStateError', 'SecurityError'].includes(errorName);
+    const busyByMessage = /failed to open|access (?:is )?denied|already open|in use|busy|exclusive|claimed|permission denied|打开失败|被占用/.test(combined);
+    if (event === 'hid-open-error' || busyByName || busyByMessage) {
+      if (event !== 'hid-open-error' || busyByName || busyByMessage || !/network|timeout|abort|readable/.test(combined)) {
+        return {
+          code: 'device-busy',
+          severity: 'error',
+          title: '设备句柄可能被网页驱动或其它进程占用',
+          summary: '无法独占打开雷电68 的 WebHID 配置接口，通常是达尔优官网驱动或其他外设软件正在占用。',
+          steps: [
+            '关闭浏览器中打开的官网驱动页面（oem.dareu.com）或在网页中先断开连接。',
+            '检查系统托盘或后台是否运行着其它外设/灯光控制软件占用同一 HID 接口。',
+            '重新拔插 USB 线或 2.4G 接收器后重试连接。'
+          ],
+          errorName: errorName || 'NotAllowedError'
+        };
+      }
+    }
+
+    const noDeviceByResult = event === 'hid-request-result' && Number(context.count || 0) === 0;
+    const noDeviceByReason = discoveryReason === 'no-device' && !context.timeout && event !== 'hid-send-error';
+    const noDeviceByError = errorName === 'NotFoundError' || /no device|not found|未找到|未选择/.test(combined);
+    if (noDeviceByResult || noDeviceByReason || noDeviceByError) {
+      return {
+        code: 'no-device',
+        severity: 'info',
+        title: '未检测到雷电68 设备',
+        summary: '系统中未发现雷电68 的 USB 有线（PID 0x0211）或 2.4G 接收器（PID 0x0434）配置接口。',
+        steps: [
+          '确认 USB-C 数据线插紧且支持数据传输（避免纯充电线）。',
+          '若使用 2.4G 模式，请将接收器直接插在电脑 USB 口并轻按键盘唤醒。',
+          '如刚才在设备选择弹窗中点了「取消」，再次点击「连接键盘」即可。'
+        ],
+        errorName: errorName || 'NotFoundError'
+      };
+    }
+
+    return {
+      code: 'hid-comm-failed',
+      severity: 'error',
+      title: context.timeout ? 'HID 通信超时，未读回完整配置' : 'HID 通信失败',
+      summary: '设备已找到，但在收发 HID 配置报文时出现中断或超时。',
+      steps: [
+        '建议改插电脑主板后置 USB 接口，避开供电不足的扩展坞或 KVM 切换器。',
+        '2.4G 无线模式下请缩短接收器距离，确保键盘未休眠且电量充足。',
+        '重新拔插后再次连接，修改后可用底栏「重新读取核对」确认通信稳定。'
+      ],
+      errorName: errorName || (context.timeout ? 'TimeoutError' : 'NetworkError')
+    };
+  }
+
+  function getTravelBadgePalette(theme) {
+    if (theme === 'light') {
+      return {
+        bg: 'rgba(255, 255, 255, 0.94)',
+        stroke: 'rgba(25, 28, 32, 0.16)',
+        travel: '#1d4ed8',
+        rtTrigger: '#15803d',
+        rtReset: '#c2410c'
+      };
+    }
+    return {
+      bg: 'rgba(17, 18, 20, 0.90)',
+      stroke: 'rgba(255, 255, 255, 0.22)',
+      travel: '#d6f266',
+      rtTrigger: '#86efac',
+      rtReset: '#fdba74'
+    };
+  }
+
+  function formatSanitizedRendererReport({meta = {}, discovery = null, stats = {}, devices = [], entries = []} = {}) {
+    const redact = text => String(text || '')
+      .replace(/([A-Za-z]:\\Users\\)([^\\/:*?"<>|\r\n]+)/gi, '$1<redacted>')
+      .replace(/(\/(?:Users|home)\/)([^/\s]+)/g, '$1<redacted>');
+    return JSON.stringify({
+      meta: {
+        appVersion: String(meta.appVersion || ''),
+        electron: String(meta.electron || ''),
+        platform: String(meta.platform || ''),
+        dataDir: redact(meta.dataDir || ''),
+        generatedAt: new Date().toISOString(),
+        privacyNote: '脱敏诊断报告：仅包含设备接口枚举、HID 收发统计与错误分类，绝不含按键输入文本。'
+      },
+      lastDiscovery: discovery || null,
+      sessionHidStats: stats || {},
+      authorizedHidDevices: (devices || []).map(d => ({
+        name: redact(d.productName || d.name || 'HID Device'),
+        vendorId: typeof d.vendorId === 'number' ? '0x' + d.vendorId.toString(16).padStart(4, '0') : null,
+        productId: typeof d.productId === 'number' ? '0x' + d.productId.toString(16).padStart(4, '0') : null,
+        opened: Boolean(d.opened),
+        collections: (d.collections || []).map(c => ({
+          usagePage: typeof c.usagePage === 'number' ? '0x' + c.usagePage.toString(16) : null,
+          usage: typeof c.usage === 'number' ? '0x' + c.usage.toString(16) : null
+        }))
+      })),
+      recentLogs: (entries || []).slice(-60).map(item => ({
+        time: item.time || '',
+        event: item.event || '',
+        errorName: item.errorName || undefined,
+        category: item.category || undefined,
+        message: item.message ? redact(item.message) : undefined,
+        vendorId: typeof item.vendorId === 'number' ? item.vendorId : undefined,
+        productId: typeof item.productId === 'number' ? item.productId : undefined,
+        reportId: typeof item.reportId === 'number' ? item.reportId : undefined,
+        bytes: typeof item.bytes === 'number' ? item.bytes : undefined,
+        count: typeof item.count === 'number' ? item.count : undefined
+      }))
+    }, null, 2);
   }
 
   function createHidFeedbackController(options = {}) {
@@ -493,6 +641,10 @@
     extractDeviceStatusInfo,
     classifyPaletteKey,
     classifyFeedbackEvent,
+    isSupportedHotplugDevice,
+    classifyConnectionError,
+    getTravelBadgePalette,
+    formatSanitizedRendererReport,
     createHidFeedbackController,
     createVerifyStateMachine
   };

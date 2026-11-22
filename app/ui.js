@@ -16,7 +16,8 @@
     activity: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
     layers: '<path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/>',
     game: '<path d="M7 7h10c3 0 5 11 2 11-1 0-3-3-4-3H9c-1 0-3 3-4 3-3 0-1-11 2-11Z"/><path d="M7 10v4m-2-2h4m6-1h.01m3 2h.01"/>',
-    settings: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="17" r="2"/>'
+    settings: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="17" r="2"/>',
+    diag: '<path d="M4 12h4l2-5 4 10 2-5h4"/><circle cx="12" cy="12" r="9"/>'
   };
   const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]}</svg>`;
 
@@ -32,41 +33,77 @@
     shell.innerHTML = `
       <header class="local-header">
         <a class="local-brand" href="#" aria-label="雷电68，返回设备列表"><span class="local-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M14 2 5 13h6l-1 9 9-12h-6l1-8Z" fill="currentColor"/></svg></span>THUNDER<span class="local-brand-number">68</span></a>
-        <span class="local-header-divider"></span><span class="local-header-title">键盘控制中心</span><div class="local-theme-control"><label for="local-theme">外观</label><select id="local-theme" aria-label="外观主题"><option value="system">跟随系统</option><option value="dark">深色</option><option value="light">浅色</option></select></div><span class="local-header-edition">本地运行</span>
+        <span class="local-header-divider"></span><span class="local-header-title">键盘控制中心</span>
+        <div class="local-theme-control"><button type="button" class="local-diag-trigger" aria-haspopup="dialog" aria-expanded="false">${icon('diag')}<span>连接诊断</span></button><label for="local-theme">外观</label><select id="local-theme" aria-label="外观主题"><option value="system">跟随系统</option><option value="dark">深色</option><option value="light">浅色</option></select></div><span class="local-header-edition">本地运行</span>
       </header>
       <aside class="local-rail">
         <div class="local-rail-label">设备</div>
-        <button class="local-device-link">${icon('keyboard')}<span>我的设备</span></button>
-        <div class="local-config-nav"><div class="local-rail-label">键盘配置</div>${pages.map(([label, glyph], i) => `<button class="local-nav-item" data-page="${i}">${icon(glyph)}<span>${label}</span></button>`).join('')}</div>
+        <button type="button" class="local-device-link">${icon('keyboard')}<span>我的设备</span></button>
+        <div class="local-config-nav"><div class="local-rail-label">键盘配置</div>${pages.map(([label, glyph], i) => `<button type="button" class="local-nav-item" data-page="${i}">${icon(glyph)}<span>${label}</span></button>`).join('')}</div>
+        <div class="local-companion-nav" hidden><div class="local-rail-label">伴侣工具</div><div class="local-companion-nav-list"></div></div>
         <div class="local-rail-bottom"><span class="local-offline-dot"></span>THUNDER 68<div class="local-rail-meta"><span class="local-rail-mode">磁轴键盘 · USB / 2.4G</span><span class="local-rail-version" hidden></span></div></div>
       </aside>
-      <div class="local-page-heading"><div><h1>按键定义</h1><p></p></div><span class="local-status" role="status"><i></i><span>未连接</span></span></div>
-      <section class="local-welcome"><article class="local-connect-card"><div class="local-card-heading"><span class="local-model">THUNDER <b>68</b></span><span class="local-usb-tag">USB / 2.4G</span></div><div class="local-home-board" aria-label="雷电68键盘布局"></div><div class="local-connect-card-bottom"><div><h2>雷电68</h2><p>68 键布局 · 磁轴键盘</p></div><button class="local-connect-button">连接键盘 <span>→</span></button></div></article><aside class="local-connect-guide"><h2>开始配置</h2><ol><li><b>连接键盘</b><p>通过 USB 线或 2.4G 接收器连接到电脑。</p></li><li><b>建立连接</b><p>点击“连接键盘”，读取当前配置（2.4G 模式将弹出配对/进入提示）。</p></li><li><b>调整手感</b><p>配置按键、灯光与触发行程。</p></li></ol><div class="local-guide-note">连接失败时，先断开官网驱动中的连接，再重试。</div></aside></section>
-      <section class="local-board-overlay"><div class="local-board-title"><b>THUNDER 68 <span>当前键盘</span></b><button class="local-zoom-board" aria-pressed="false">放大键盘</button></div><div class="local-selection"><div class="local-selection-summary"><span class="local-selection-label">未选择按键</span><button class="local-clear-selection">清除</button></div><div class="local-selection-shortcuts"><button data-select="WASD">WASD</button><button data-select="字母键">字母</button><button data-select="全选">全选</button><button data-select="反选">反选</button></div><button class="local-reset-keys">恢复默认…</button></div><div class="local-key-chips" aria-label="已选按键"></div><p class="local-board-instruction">点击选择按键；再次点击取消。参数调整作用于全部已选按键。</p></section>
+      <div class="local-page-heading"><div><h1>按键定义</h1><p></p></div><div class="local-heading-right"><span class="local-status" role="status"><i></i><span>未连接</span></span></div></div>
+      <div class="local-hotplug-banner" role="status" aria-live="polite" hidden><span class="local-hotplug-text"></span><div class="local-hotplug-actions"><button type="button" class="local-hotplug-reconnect">一键重连</button><button type="button" class="local-hotplug-dismiss">忽略</button></div></div>
+      <section class="local-welcome">
+        <div class="local-welcome-main">
+          <article class="local-connect-card"><div class="local-card-heading"><span class="local-model">THUNDER <b>68</b></span><span class="local-usb-tag">USB / 2.4G</span></div><div class="local-home-board" aria-label="雷电68键盘布局"></div><div class="local-connect-card-bottom"><div><h2>雷电68</h2><p>68 键布局 · 磁轴键盘</p></div><button type="button" class="local-connect-button">连接键盘 <span>→</span></button></div></article>
+          <section class="local-troubleshoot-card" role="alert" hidden></section>
+          <details class="local-narrow-guide"><summary>连接指南与排障提示</summary><ol><li><b>连接键盘</b>：通过 USB 数据线或 2.4G 接收器接入电脑（蓝牙模式不支持 WebHID）。</li><li><b>建立连接</b>：点击“连接键盘”读取配置；2.4G 模式将弹出配对提示。</li><li><b>排障</b>：若无法打开设备，请关闭占用键盘的官网网页驱动或其他外设软件后重试。</li></ol></details>
+        </div>
+        <aside class="local-connect-guide"><h2>开始配置</h2><ol><li><b>连接键盘</b><p>通过 USB 线或 2.4G 接收器连接到电脑。</p></li><li><b>建立连接</b><p>点击“连接键盘”，读取当前配置（2.4G 模式将弹出配对/进入提示）。</p></li><li><b>调整手感</b><p>配置按键、灯光与触发行程。</p></li></ol><div class="local-guide-note">连接失败时，请先确认未处于蓝牙模式，并关闭占用键盘的官网网页驱动，再重试或打开右上角「连接诊断」。</div></aside>
+      </section>
+      <section class="local-companion-stage" hidden></section>
+      <section class="local-board-overlay"><div class="local-board-title"><b>THUNDER 68 <span>当前键盘</span></b><button type="button" class="local-zoom-board" aria-pressed="false">放大键盘</button></div><div class="local-selection"><div class="local-selection-summary"><span class="local-selection-label">未选择按键</span><button type="button" class="local-clear-selection">清除</button></div><div class="local-selection-shortcuts"><button type="button" data-select="WASD">WASD</button><button type="button" data-select="字母键">字母</button><button type="button" data-select="全选">全选</button><button type="button" data-select="反选">反选</button></div><button type="button" class="local-reset-keys">恢复默认…</button></div><div class="local-key-chips" aria-label="已选按键"></div><p class="local-board-instruction">点击选择按键；再次点击取消。参数调整作用于全部已选按键。</p></section>
       <section class="local-palette"><div class="local-palette-toolbar"><label class="local-search-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg><input type="search" placeholder="搜索按键，如 Esc、空格、Num 1、F1" aria-label="搜索可分配按键"></label><span class="local-palette-count"></span></div><div class="local-palette-grid"></div><div class="local-search-empty" hidden>没有找到匹配按键，试试其他名称。</div></section>
-      <footer class="local-footer"><span class="local-operation" role="status" aria-live="polite">连接键盘后读取当前配置</span><div class="local-footer-actions"><button class="local-import-config" hidden>导入配置</button><button class="local-verify" hidden>重新读取核对</button></div><span>本地驱动${versionSuffix}</span></footer>`;
+      <div class="local-diag-backdrop" hidden></div>
+      <aside class="local-diag-drawer" role="dialog" aria-modal="true" aria-label="连接诊断中心" hidden>
+        <div class="local-diag-head"><div><h2>连接诊断中心</h2><p>只读查看枚举接口、HID 收发计数与脱敏日志</p></div><button type="button" class="local-diag-close" aria-label="关闭诊断中心">✕</button></div>
+        <div class="local-diag-body">
+          <section class="local-diag-section"><h3>最近设备枚举</h3><div class="local-diag-discovery"></div></section>
+          <section class="local-diag-section"><h3>已授权 WebHID 接口</h3><div class="local-diag-devices"></div></section>
+          <section class="local-diag-section"><h3>本次会话 HID 计数</h3><div class="local-diag-counters"></div></section>
+          <section class="local-diag-section"><h3>近期脱敏诊断日志</h3><p class="local-diag-privacy">隐私守则：仅记录设备接口枚举、报告字节长度与错误类别，绝不记录任何按键输入文本、设备序列号或个人路径。</p><pre class="local-diag-logs"></pre></section>
+        </div>
+        <div class="local-diag-foot"><button type="button" class="local-diag-refresh">刷新状态</button><button type="button" class="local-diag-copy">一键复制脱敏诊断日志</button></div>
+      </aside>
+      <footer class="local-footer"><span class="local-operation" role="status" aria-live="polite">连接键盘后读取当前配置</span><div class="local-footer-actions"><button type="button" class="local-import-config" hidden>导入配置</button><button type="button" class="local-verify" hidden>重新读取核对</button></div><span>本地驱动${versionSuffix}</span></footer>`;
     document.body.appendChild(shell);
 
     const themeControl = shell.querySelector('#local-theme');
     const media = matchMedia('(prefers-color-scheme: dark)');
-    let themeChoice = 'system';
-    try { themeChoice = localStorage.getItem('thunder68.theme') || 'system'; } catch {}
+    let themeChoice = document.documentElement.dataset.themeChoice || 'system';
+    if (!['dark', 'light', 'system'].includes(themeChoice)) {
+      themeChoice = 'system';
+      try { themeChoice = localStorage.getItem('thunder68.theme') || 'system'; } catch {}
+    }
     if (!['dark', 'light', 'system'].includes(themeChoice)) themeChoice = 'system';
 
-    function applyTheme() {
+    let parameterSignature;
+
+    function applyTheme(notifyHost = true) {
       const resolved = themeChoice === 'system' ? (media.matches ? 'dark' : 'light') : themeChoice;
       document.documentElement.dataset.theme = resolved;
       document.documentElement.dataset.themeChoice = themeChoice;
       themeControl.value = themeChoice;
-      window.thunder68Local?.setTheme?.(resolved);
+      if (notifyHost) {
+        window.thunder68Local?.setTheme?.(resolved, themeChoice);
+      }
+      parameterSignature = '';
+      if (typeof drawParameters === 'function') drawParameters();
+      window.dispatchEvent(new CustomEvent('thunder68-theme-change', {detail: {themeChoice, resolved}}));
     }
-    themeControl.addEventListener('change', () => {
-      themeChoice = themeControl.value;
-      try { localStorage.setItem('thunder68.theme', themeChoice); } catch {}
-      applyTheme();
-    });
-    media.addEventListener('change', applyTheme);
-    applyTheme();
+    function setThemeChoice(nextChoice, persist = true) {
+      if (!['dark', 'light', 'system'].includes(nextChoice)) return;
+      themeChoice = nextChoice;
+      if (persist) {
+        try { localStorage.setItem('thunder68.theme', themeChoice); } catch {}
+      }
+      applyTheme(persist);
+    }
+    themeControl.addEventListener('change', () => setThemeChoice(themeControl.value, true));
+    media.addEventListener('change', () => applyTheme(true));
+    applyTheme(true);
 
     shell.querySelector('.local-zoom-board').addEventListener('click', e => {
       const expanded = document.body.classList.toggle('local-board-expanded');
@@ -79,6 +116,20 @@
     const verify = shell.querySelector('.local-verify');
     const importBtn = shell.querySelector('.local-import-config');
     const connectButton = shell.querySelector('.local-connect-button');
+    const troubleshootCard = shell.querySelector('.local-troubleshoot-card');
+    const hotplugBanner = shell.querySelector('.local-hotplug-banner');
+    const hotplugText = shell.querySelector('.local-hotplug-text');
+    const hotplugReconnect = shell.querySelector('.local-hotplug-reconnect');
+    const hotplugDismiss = shell.querySelector('.local-hotplug-dismiss');
+    const diagTrigger = shell.querySelector('.local-diag-trigger');
+    const diagBackdrop = shell.querySelector('.local-diag-backdrop');
+    const diagDrawer = shell.querySelector('.local-diag-drawer');
+    const diagClose = shell.querySelector('.local-diag-close');
+    const diagRefresh = shell.querySelector('.local-diag-refresh');
+    const diagCopy = shell.querySelector('.local-diag-copy');
+    const companionNav = shell.querySelector('.local-companion-nav');
+    const companionNavList = shell.querySelector('.local-companion-nav-list');
+    const companionStage = shell.querySelector('.local-companion-stage');
 
     const verifyMachine = helpers.createVerifyStateMachine({settleMs: 700});
     let connectionTimer;
@@ -91,6 +142,276 @@
     let observedSignature = '';
     let stableAt = 0;
     let settleTimer;
+    let lastDiscovery = null;
+    let lastDiagReportText = '';
+    let latestDeviceInfo = {productId: null, isWireless: false, isWired: false, modeLabel: 'USB / 2.4G', battery: null, officialVersion: ''};
+
+    const companionTools = new Map();
+    let activeToolId = null;
+
+    window.thunder68Local?.onHidDiscovery?.(summary => {
+      lastDiscovery = summary;
+      if (summary && summary.reason === 'bluetooth-unsupported' && !deviceOpened) {
+        const info = helpers.classifyConnectionError({discoveryReason: summary.reason});
+        renderTroubleshoot(info);
+      }
+      if (!diagDrawer.hidden) refreshDiagnostics();
+    });
+
+    function clearTroubleshoot() {
+      troubleshootCard.hidden = true;
+      troubleshootCard.replaceChildren();
+    }
+
+    function renderTroubleshoot(info) {
+      if (!info) {
+        clearTroubleshoot();
+        return;
+      }
+      troubleshootCard.hidden = false;
+      troubleshootCard.dataset.code = info.code;
+      troubleshootCard.dataset.severity = info.severity || 'error';
+      troubleshootCard.replaceChildren();
+
+      const header = document.createElement('div');
+      header.className = 'local-troubleshoot-head';
+      const titleWrap = document.createElement('div');
+      const badge = document.createElement('span');
+      badge.className = 'local-troubleshoot-badge';
+      badge.textContent = info.errorName || info.code;
+      const title = document.createElement('strong');
+      title.textContent = info.title;
+      titleWrap.append(badge, title);
+
+      const dismissBtn = document.createElement('button');
+      dismissBtn.type = 'button';
+      dismissBtn.className = 'local-troubleshoot-close';
+      dismissBtn.setAttribute('aria-label', '关闭排障提示');
+      dismissBtn.textContent = '✕';
+      dismissBtn.addEventListener('click', clearTroubleshoot);
+      header.append(titleWrap, dismissBtn);
+
+      const summary = document.createElement('p');
+      summary.className = 'local-troubleshoot-summary';
+      summary.textContent = info.summary;
+
+      const list = document.createElement('ol');
+      list.className = 'local-troubleshoot-steps';
+      for (const step of info.steps || []) {
+        const li = document.createElement('li');
+        li.textContent = step;
+        list.appendChild(li);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'local-troubleshoot-actions';
+      const retryBtn = document.createElement('button');
+      retryBtn.type = 'button';
+      retryBtn.className = 'local-btn-primary';
+      retryBtn.textContent = '重新尝试连接';
+      retryBtn.addEventListener('click', () => connect());
+      const diagBtn = document.createElement('button');
+      diagBtn.type = 'button';
+      diagBtn.className = 'local-btn-secondary';
+      diagBtn.textContent = '打开连接诊断中心';
+      diagBtn.addEventListener('click', () => openDiagnostics());
+      actions.append(retryBtn, diagBtn);
+
+      troubleshootCard.append(header, summary, list, actions);
+    }
+
+    function showHotplugBanner(device) {
+      if (deviceOpened) return;
+      const kind = device?.productId === 0x0434 ? '2.4G 接收器' : device?.productId === 0x0211 ? 'USB 有线' : 'HID 接口';
+      hotplugText.textContent = `检测到雷电68（${kind}）已接入，点击可立即连接并读取配置。`;
+      hotplugBanner.hidden = false;
+    }
+
+    function hideHotplugBanner() {
+      hotplugBanner.hidden = true;
+    }
+
+    hotplugDismiss.addEventListener('click', hideHotplugBanner);
+    hotplugReconnect.addEventListener('click', () => {
+      hideHotplugBanner();
+      exitTool();
+      if (root.querySelector('.main-content') && !deviceOpened) {
+        returnToDevices();
+        setTimeout(() => connect(), 280);
+      } else {
+        connect();
+      }
+    });
+
+    async function refreshDiagnostics() {
+      const discoveryEl = diagDrawer.querySelector('.local-diag-discovery');
+      const devicesEl = diagDrawer.querySelector('.local-diag-devices');
+      const countersEl = diagDrawer.querySelector('.local-diag-counters');
+      const logsEl = diagDrawer.querySelector('.local-diag-logs');
+
+      let mainData = null;
+      try {
+        mainData = await window.thunder68Local?.readDiagnostics?.();
+      } catch {}
+
+      const effectiveDiscovery = mainData?.lastDiscovery || lastDiscovery;
+      if (effectiveDiscovery) {
+        const reasonLabels = {
+          ready: '已发现可用配置接口',
+          'bluetooth-unsupported': '发现非配置接口（疑似蓝牙模式）',
+          'no-device': '未枚举到雷电68 配置接口'
+        };
+        discoveryEl.innerHTML = '';
+        const grid = document.createElement('div');
+        grid.className = 'local-diag-kv-grid';
+        for (const [k, v] of [
+          ['状态判定', reasonLabels[effectiveDiscovery.reason] || effectiveDiscovery.reason],
+          ['系统 HID 总数', String(effectiveDiscovery.totalDevices ?? 0)],
+          ['可用配置接口', String(effectiveDiscovery.configCandidatesCount ?? 0)],
+          ['疑似蓝牙/非配置', String(effectiveDiscovery.suspectedBluetoothCount ?? effectiveDiscovery.sameVendorNonConfigCount ?? 0)]
+        ]) {
+          const item = document.createElement('div');
+          item.className = 'local-diag-kv';
+          const label = document.createElement('span');
+          label.textContent = k;
+          const val = document.createElement('strong');
+          val.textContent = v;
+          item.append(label, val);
+          grid.appendChild(item);
+        }
+        discoveryEl.appendChild(grid);
+      } else {
+        discoveryEl.textContent = '本次会话尚未触发设备枚举（点击「连接键盘」后更新）。';
+      }
+
+      let hidDevices = [];
+      try {
+        hidDevices = navigator.hid ? await navigator.hid.getDevices() : [];
+      } catch {}
+
+      devicesEl.replaceChildren();
+      if (!hidDevices.length) {
+        const empty = document.createElement('p');
+        empty.className = 'local-diag-empty';
+        empty.textContent = '当前暂无已授权的 WebHID 设备接口。';
+        devicesEl.appendChild(empty);
+      } else {
+        for (const d of hidDevices) {
+          const card = document.createElement('div');
+          card.className = 'local-diag-device-row';
+          const hex = n => typeof n === 'number' ? '0x' + n.toString(16).padStart(4, '0').toUpperCase() : '--';
+          const cols = (d.collections || []).map(c => `0x${(c.usagePage || 0).toString(16)}/0x${(c.usage || 0).toString(16)}`).join(', ') || '无';
+          const head = document.createElement('div');
+          head.className = 'local-diag-device-title';
+          const title = document.createElement('strong');
+          title.textContent = `${d.productName || 'HID Device'} (${hex(d.vendorId)}:${hex(d.productId)})`;
+          const pill = document.createElement('span');
+          pill.className = d.opened ? 'is-open' : 'is-closed';
+          pill.textContent = d.opened ? '已打开' : '未打开';
+          head.append(title, pill);
+          const sub = document.createElement('div');
+          sub.className = 'local-diag-device-meta';
+          sub.textContent = `接口集合: ${cols}`;
+          card.append(head, sub);
+          devicesEl.appendChild(card);
+        }
+      }
+
+      const stats = window.thunder68DesktopDiag?.stats?.() || {};
+      countersEl.replaceChildren();
+      const cGrid = document.createElement('div');
+      cGrid.className = 'local-diag-kv-grid';
+      for (const [label, key] of [
+        ['连接请求', 'requests'],
+        ['接口打开', 'opens'],
+        ['接口关闭', 'closes'],
+        ['HID 发包', 'sent'],
+        ['HID 收包', 'received'],
+        ['通信错误', 'errors'],
+        ['热插拔接入', 'connects'],
+        ['热插拔断开', 'disconnects']
+      ]) {
+        const item = document.createElement('div');
+        item.className = 'local-diag-kv';
+        const span = document.createElement('span');
+        span.textContent = label;
+        const val = document.createElement('strong');
+        val.textContent = String(stats[key] ?? 0);
+        item.append(span, val);
+        cGrid.appendChild(item);
+      }
+      countersEl.appendChild(cGrid);
+
+      const sessionLogs = window.thunder68DesktopDiag?.recentEvents?.() || [];
+      const mergedEntries = (mainData?.entries?.length ? mainData.entries : sessionLogs).slice(-50);
+      lastDiagReportText = helpers.formatSanitizedRendererReport({
+        meta: mainData?.meta || {appVersion, platform: navigator.platform || ''},
+        discovery: effectiveDiscovery,
+        stats,
+        devices: hidDevices,
+        entries: mergedEntries
+      });
+
+      logsEl.textContent = mergedEntries.length
+        ? mergedEntries.map(entry => {
+            const ts = (entry.time || '').slice(11, 19);
+            const parts = [ts || '--:--:--', entry.event];
+            if (entry.errorName) parts.push(`[${entry.errorName}]`);
+            if (entry.category) parts.push(`(${entry.category})`);
+            if (entry.reason) parts.push(`reason=${entry.reason}`);
+            if (typeof entry.count === 'number') parts.push(`count=${entry.count}`);
+            if (typeof entry.bytes === 'number') parts.push(`${entry.bytes}B`);
+            if (entry.message) parts.push(entry.message);
+            return parts.join(' ');
+          }).join('\n')
+        : '暂无诊断事件记录。';
+    }
+
+    function openDiagnostics() {
+      diagBackdrop.hidden = false;
+      diagDrawer.hidden = false;
+      diagTrigger.setAttribute('aria-expanded', 'true');
+      refreshDiagnostics();
+    }
+
+    function closeDiagnostics() {
+      diagBackdrop.hidden = true;
+      diagDrawer.hidden = true;
+      diagTrigger.setAttribute('aria-expanded', 'false');
+    }
+
+    diagTrigger.addEventListener('click', () => {
+      if (diagDrawer.hidden) openDiagnostics();
+      else closeDiagnostics();
+    });
+    diagClose.addEventListener('click', closeDiagnostics);
+    diagBackdrop.addEventListener('click', closeDiagnostics);
+    diagRefresh.addEventListener('click', refreshDiagnostics);
+    diagCopy.addEventListener('click', async () => {
+      await refreshDiagnostics();
+      let copied = false;
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(lastDiagReportText);
+          copied = true;
+        }
+      } catch {}
+      if (!copied) {
+        const area = document.createElement('textarea');
+        area.value = lastDiagReportText;
+        area.style.position = 'fixed';
+        area.style.opacity = '0';
+        document.body.appendChild(area);
+        area.select();
+        try { copied = document.execCommand('copy'); } catch {}
+        area.remove();
+      }
+      diagCopy.textContent = copied ? '已复制脱敏日志 ✓' : '复制失败，请手动选中复制';
+      setTimeout(() => { diagCopy.textContent = '一键复制脱敏诊断日志'; }, 2200);
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !diagDrawer.hidden) closeDiagnostics();
+    });
 
     root.addEventListener('pointerdown', e => {
       if (e.target.closest('.local-settings-panel') && !e.target.closest('.tab-navigation')) lastEditAt = Date.now();
@@ -133,7 +454,10 @@
         // Do not report timeout if the official 2.4G pairing modal is awaiting user action
         if (root.querySelector('.sidebar .modal-overlay')) return;
         connectButton.disabled = false;
-        feedback('读取未完成。检查 USB/2.4G 连接，并关闭占用键盘的官网驱动后重试。', 'error');
+        const info = helpers.classifyConnectionError({timeout: true, discoveryReason: lastDiscovery?.reason});
+        renderTroubleshoot(info);
+        feedback(`${info.title}：${info.summary}`, 'error');
+        window.thunder68Local?.diagnostic({event: 'hid-connect-timeout', category: info.code});
         verifyMachine.abort();
         resetVerifyTimers();
       }, 30000);
@@ -197,13 +521,27 @@
         resetVerifyTimers();
         feedbackLocked = true;
         verifyMachine.abort();
-        feedback('操作失败：请检查 USB/2.4G 连接，重新连接后核对配置。', 'error');
+        const info = helpers.classifyConnectionError({
+          event: e.detail?.event,
+          errorName: e.detail?.errorName,
+          message: e.detail?.message,
+          discoveryReason: lastDiscovery?.reason
+        });
+        renderTroubleshoot(info);
+        feedback(`${info.title}（${info.errorName}）`, 'error');
+        window.thunder68Local?.diagnostic({event: 'connection-classified', category: info.code, errorName: info.errorName});
         connectButton.disabled = false;
       } else if (kind === 'hid-request-result' && !e.detail.count) {
         clearTimeout(connectionTimer);
         resetVerifyTimers();
         verifyMachine.abort();
-        feedback('未找到或未选择键盘。连接 USB 或 2.4G 接收器后重试。', 'error');
+        const info = helpers.classifyConnectionError({
+          event: 'hid-request-result',
+          count: 0,
+          discoveryReason: lastDiscovery?.reason
+        });
+        renderTroubleshoot(info);
+        feedback(info.title, 'error');
         connectButton.disabled = false;
       } else if (kind === 'hid-close') {
         deviceOpened = false;
@@ -227,14 +565,13 @@
     parameterCanvas.classList.add('local-parameter-labels');
     parameterCanvas.setAttribute('aria-hidden', 'true');
     shell.appendChild(parameterCanvas);
-    let parameterSignature;
 
     function drawParameters() {
       const state = window.thunder68Presentation?.state();
       const native = root.querySelector('.keyboard_image canvas');
       const params = state?.common?.deviceParams;
       const keyValues = state?.config?.keyValues;
-      const hidden = currentIndex !== 2 || !native || !params || !Array.isArray(params.layoutMappingData) || !params.layoutX || !params.layoutY || !Array.isArray(keyValues);
+      const hidden = Boolean(activeToolId) || currentIndex !== 2 || !native || !params || !Array.isArray(params.layoutMappingData) || !params.layoutX || !params.layoutY || !Array.isArray(keyValues);
       parameterCanvas.toggleAttribute('hidden', hidden);
       if (hidden) return;
 
@@ -242,10 +579,12 @@
       const style = `left:${rect.x}px;top:${rect.y}px;width:${rect.width}px;height:${rect.height}px;clip-path:inset(${Math.max(0, 148 - rect.y)}px 0 ${Math.max(0, rect.bottom - (innerHeight - 42))}px 0);`;
       if (parameterCanvas.getAttribute('style') !== style) parameterCanvas.setAttribute('style', style);
 
-      const signature = JSON.stringify([native.width, native.height, keyValues, state?.config?.fastTriggerShow, state?.config?.fastTriggerRTShow]);
+      const resolvedTheme = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+      const signature = JSON.stringify([resolvedTheme, native.width, native.height, keyValues, state?.config?.fastTriggerShow, state?.config?.fastTriggerRTShow]);
       if (signature === parameterSignature) return;
       parameterSignature = signature;
 
+      const badgePalette = helpers.getTravelBadgePalette(resolvedTheme);
       parameterCanvas.setAttribute('viewBox', `0 0 ${params.layoutX} ${params.layoutY}`);
       parameterCanvas.setAttribute('preserveAspectRatio', 'none');
       parameterCanvas.replaceChildren();
@@ -256,7 +595,17 @@
         const width = text.length * fontSize * 0.62;
         const left = align === 'right' ? x - width : align === 'center' ? x - width / 2 : x;
         const background = document.createElementNS(svgNamespace, 'rect');
-        for (const [name, attrVal] of Object.entries({x: left - 3, y: y - 1, width: width + 6, height: fontSize + 2, fill: '#fffffff0'})) {
+        for (const [name, attrVal] of Object.entries({
+          x: left - 4,
+          y: y - 2,
+          width: width + 8,
+          height: fontSize + 4,
+          rx: 5,
+          ry: 5,
+          fill: badgePalette.bg,
+          stroke: badgePalette.stroke,
+          'stroke-width': 1.5
+        })) {
           background.setAttribute(name, attrVal);
         }
         const label = document.createElementNS(svgNamespace, 'text');
@@ -268,7 +617,7 @@
           'text-anchor': align === 'right' ? 'end' : align === 'center' ? 'middle' : 'start',
           'font-family': 'Consolas,monospace',
           'font-size': fontSize,
-          'font-weight': 600
+          'font-weight': 700
         })) label.setAttribute(name, attrVal);
         parameterCanvas.append(background, label);
       };
@@ -277,11 +626,11 @@
         const value = values.get(key.id);
         if (!value) continue;
         if (state.config.fastTriggerShow) {
-          badge(value.travelValue, key.x + key.width - 5, value.isRTEnabled ? key.y + 4 : key.y + key.height - 32, '#2155b7', 'right', 26);
+          badge(value.travelValue, key.x + key.width - 5, value.isRTEnabled ? key.y + 4 : key.y + key.height - 32, badgePalette.travel, 'right', 26);
         }
         if (state.config.fastTriggerRTShow && value.isRTEnabled) {
-          badge(value.isIndependentSensitivity ? value.triggerSensitivity : value.sensitivity, key.x + 4, key.y + key.height - 24, '#176339', 'left', 20);
-          badge(value.isIndependentSensitivity ? value.resetSensitivity : value.sensitivity, key.x + key.width - 4, key.y + key.height - 24, '#95440c', 'right', 20);
+          badge(value.isIndependentSensitivity ? value.triggerSensitivity : value.sensitivity, key.x + 4, key.y + key.height - 24, badgePalette.rtTrigger, 'left', 20);
+          badge(value.isIndependentSensitivity ? value.resetSensitivity : value.sensitivity, key.x + key.width - 4, key.y + key.height - 24, badgePalette.rtReset, 'right', 20);
         }
       }
     }
@@ -442,6 +791,8 @@
     };
 
     window.addEventListener('thunder68-device-open', () => {
+      hideHotplugBanner();
+      clearTroubleshoot();
       verifyMachine.onDeviceOpened();
       refreshDevice();
     });
@@ -452,7 +803,73 @@
       synchronize();
     });
 
+    function exitTool() {
+      if (!activeToolId) return;
+      const previous = companionTools.get(activeToolId);
+      activeToolId = null;
+      document.body.classList.remove('local-companion-active');
+      companionStage.hidden = true;
+      for (const [, tool] of companionTools) {
+        if (tool.container) tool.container.hidden = true;
+        if (tool.button) {
+          tool.button.classList.remove('is-active');
+          tool.button.setAttribute('aria-current', 'false');
+        }
+      }
+      try { previous?.onHide?.(); } catch {}
+      synchronize();
+    }
+
+    function activateTool(id) {
+      const tool = companionTools.get(id);
+      if (!tool) return false;
+      if (activeToolId === id) return true;
+      if (activeToolId) {
+        const prev = companionTools.get(activeToolId);
+        if (prev?.container) prev.container.hidden = true;
+        if (prev?.button) {
+          prev.button.classList.remove('is-active');
+          prev.button.setAttribute('aria-current', 'false');
+        }
+        try { prev?.onHide?.(); } catch {}
+      }
+      activeToolId = id;
+      document.body.classList.add('local-companion-active');
+      companionStage.hidden = false;
+      tool.container.hidden = false;
+      tool.button.classList.add('is-active');
+      tool.button.setAttribute('aria-current', 'page');
+      synchronize();
+      try { tool.onShow?.(); } catch {}
+      return true;
+    }
+
+    function registerTool(spec) {
+      if (!spec || !spec.id || companionTools.has(spec.id)) return false;
+      companionNav.hidden = false;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'local-companion-item';
+      button.dataset.tool = spec.id;
+      button.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${spec.iconSvg || paths.settings}</svg><span></span>`;
+      button.querySelector('span').textContent = spec.label || spec.id;
+      button.addEventListener('click', () => activateTool(spec.id));
+      companionNavList.appendChild(button);
+
+      const container = document.createElement('div');
+      container.className = 'local-companion-view';
+      container.dataset.toolView = spec.id;
+      container.hidden = true;
+      companionStage.appendChild(container);
+
+      const entry = {...spec, button, container};
+      companionTools.set(spec.id, entry);
+      try { spec.render?.(container); } catch {}
+      return true;
+    }
+
     function returnToDevices() {
+      exitTool();
       const target = helpers.findExitButton(root);
       if (!target) return false;
       target.click();
@@ -463,10 +880,17 @@
       e.preventDefault();
       returnToDevices();
     });
-    shell.querySelector('.local-device-link').addEventListener('click', returnToDevices);
+    shell.querySelector('.local-device-link').addEventListener('click', () => {
+      if (activeToolId && !root.querySelector('.main-content')) {
+        exitTool();
+        return;
+      }
+      returnToDevices();
+    });
 
     for (const button of shell.querySelectorAll('[data-page]')) {
       button.addEventListener('click', () => {
+        exitTool();
         const tab = tabs[Number(button.dataset.page)];
         if (tab) {
           tab.click();
@@ -571,10 +995,11 @@
       }
 
       for (const node of root.querySelectorAll('[style]')) classify(node);
-      shell.querySelector('.local-device-link').classList.toggle('is-active', !connectedPage);
+      shell.querySelector('.local-device-link').classList.toggle('is-active', !connectedPage && !activeToolId);
 
       // Update sidebar-derived device info (2.4G mode, battery, official build version)
       const deviceInfo = helpers.extractDeviceStatusInfo(state, sidebarEl);
+      latestDeviceInfo = deviceInfo;
       const railMode = shell.querySelector('.local-rail-mode');
       if (railMode) {
         const batText = deviceInfo.battery !== null ? ` · 电量 ${deviceInfo.battery}%` : '';
@@ -614,12 +1039,14 @@
         shell.querySelector('.local-reset-keys').hidden = ![0, 3].includes(index);
 
         for (const btn of shell.querySelectorAll('[data-page]')) {
-          const active = Number(btn.dataset.page) === index;
+          const active = !activeToolId && Number(btn.dataset.page) === index;
           btn.classList.toggle('is-active', active);
           btn.setAttribute('aria-current', active ? 'page' : 'false');
         }
-        shell.querySelector('.local-page-heading h1').textContent = pages[index][0];
-        shell.querySelector('.local-page-heading p').textContent = pages[index][2];
+        if (!activeToolId) {
+          shell.querySelector('.local-page-heading h1').textContent = pages[index][0];
+          shell.querySelector('.local-page-heading p').textContent = pages[index][2];
+        }
 
         const keyboard = main.querySelector('.keyboard_image');
         if (keyboard && !keyboard.parentElement.parentElement.classList.contains('local-keyboard-stage')) {
@@ -861,14 +1288,45 @@
         }
       }
 
+      if (activeToolId) {
+        const activeTool = companionTools.get(activeToolId);
+        if (activeTool) {
+          shell.querySelector('.local-page-heading h1').textContent = activeTool.title || activeTool.label;
+          shell.querySelector('.local-page-heading p').textContent = activeTool.subtitle || '';
+        }
+        parameterCanvas.setAttribute('hidden', '');
+      }
+
       const status = shell.querySelector('.local-status');
-      status.classList.toggle('is-connected', connectedPage && deviceOpened && !reading);
+      const isEffectivelyConnected = connectedPage && deviceOpened && !reading;
+      status.classList.toggle('is-connected', isEffectivelyConnected);
       const batBadge = deviceInfo.battery !== null ? ` · ${deviceInfo.battery}%` : '';
       status.querySelector('span').textContent = modalVisible
         ? '等待无线配对/确认'
         : connectedPage
           ? (reading ? '正在读取配置' : deviceOpened ? `${deviceInfo.modeLabel} 已连接${batBadge}` : '设备已断开')
           : '等待连接';
+
+      window.thunder68Local?.reportDeviceStatus?.({
+        connected: isEffectivelyConnected,
+        deviceOpened,
+        reading,
+        busy: !!state?.config?.mask,
+        modeLabel: deviceInfo.modeLabel,
+        isWireless: Boolean(deviceInfo.isWireless),
+        battery: deviceInfo.battery
+      });
+      window.dispatchEvent(new CustomEvent('thunder68-shell-sync', {
+        detail: {
+          connectedPage,
+          deviceOpened,
+          ready,
+          reading,
+          busy: !!state?.config?.mask,
+          activeToolId,
+          deviceInfo
+        }
+      }));
     }
 
     let pending = false;
@@ -881,14 +1339,60 @@
       });
     }).observe(root, {childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class']});
 
+    navigator.hid?.addEventListener('connect', event => {
+      const device = event?.device;
+      if (helpers.isSupportedHotplugDevice(device)) {
+        if (!deviceOpened) {
+          showHotplugBanner(device);
+        }
+        refreshDevice();
+      }
+      if (!diagDrawer.hidden) refreshDiagnostics();
+    });
+
     navigator.hid?.addEventListener('disconnect', () => {
       deviceOpened = false;
       ready = false;
       feedbackLocked = true;
+      hideHotplugBanner();
       verifyMachine.onLeftConfigOrClosed();
       feedback('键盘已断开。重新插入 USB 或检查 2.4G 连接，然后返回“我的设备”重连。', 'error');
       refreshDevice();
+      if (!diagDrawer.hidden) refreshDiagnostics();
     });
+
+    window.thunder68Shell = Object.freeze({
+      registerTool,
+      activateTool,
+      exitTool,
+      getActiveTool: () => activeToolId,
+      getStatus: () => ({
+        deviceOpened,
+        ready,
+        connectedPage: !!root.querySelector('.main-content'),
+        busy: !!window.thunder68Presentation?.state()?.config?.mask,
+        deviceInfo: {...latestDeviceInfo}
+      }),
+      feedback,
+      connect,
+      triggerVerify: () => verify.click(),
+      openDiagnostics,
+      setThemeChoice,
+      getThemeChoice: () => themeChoice,
+      navigateToOfficialPage(index) {
+        exitTool();
+        const tab = tabs[Number(index)];
+        if (tab) {
+          tab.click();
+          const main = root.querySelector('.main-content');
+          if (main) main.scrollTop = 0;
+          synchronize();
+          return true;
+        }
+        return false;
+      }
+    });
+    window.dispatchEvent(new CustomEvent('thunder68-shell-ready'));
 
     if (navigator.hid) refreshDevice();
     synchronize();

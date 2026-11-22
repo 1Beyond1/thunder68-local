@@ -2012,6 +2012,10 @@ body[data-local-page="5"] #root .local-settings-panel > .tab-navigation + div > 
     display: none;
   }
 
+  .local-narrow-guide {
+    display: block;
+  }
+
   .local-key-details b {
     font-size: 16px;
   }
@@ -2078,4 +2082,468 @@ body[data-local-page="5"] #root .local-settings-panel > .tab-navigation + div > 
     transition: none !important;
     animation: none !important;
   }
+}
+
+/* ==================== 11. 阶段 3 增强：热插拔浮条、精准排障、连接诊断中心与伴侣视图宿主 ==================== */
+
+.local-diag-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--ui-raised);
+  color: var(--ui-text);
+  border: 1px solid var(--ui-line);
+  border-radius: 6px;
+  font-size: 12px;
+  margin-right: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.local-diag-trigger svg {
+  width: 15px !important;
+  height: 15px !important;
+  color: var(--ui-muted);
+}
+
+.local-diag-trigger:hover {
+  background: var(--ui-hover);
+  border-color: var(--ui-accent);
+}
+
+.local-heading-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.local-companion-nav {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ui-line);
+}
+
+.local-companion-item {
+  margin-bottom: 5px;
+}
+
+.local-companion-item.is-active:after {
+  content: "";
+  margin-left: auto;
+  width: 3px;
+  height: 18px;
+  border-radius: 2px;
+  background: var(--ui-accent);
+}
+
+/* 伴侣工具全屏主视图宿主（保持 #root 与 WebHID 后台活跃不卸载） */
+.local-companion-stage {
+  position: fixed;
+  left: var(--ui-rail);
+  top: calc(var(--ui-header) + 92px);
+  right: 0;
+  bottom: var(--ui-footer);
+  overflow: auto;
+  padding: 0 24px 28px;
+  background: var(--ui-bg);
+  z-index: 25;
+}
+
+.local-companion-active #root .app,
+.local-companion-active .local-welcome,
+.local-companion-active .local-board-overlay,
+.local-companion-active .local-palette,
+.local-companion-active .local-parameter-labels {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+.local-companion-view {
+  max-width: 1280px;
+}
+
+/* 欢迎页左侧容器与窄屏可折叠排障条 */
+.local-welcome-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.local-narrow-guide {
+  display: none;
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-line);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--ui-muted);
+  font-size: 12px;
+}
+
+.local-narrow-guide summary {
+  cursor: pointer;
+  color: var(--ui-text);
+  font-weight: 600;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.local-narrow-guide summary::after {
+  content: "展开 ▾";
+  font-size: 11px;
+  color: var(--ui-muted);
+}
+
+.local-narrow-guide[open] summary::after {
+  content: "收起 ▴";
+}
+
+.local-narrow-guide ol {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  line-height: 1.65;
+}
+
+.local-narrow-guide b {
+  color: var(--ui-text);
+}
+
+/* 热插拔自动感应非侵入浮条 */
+.local-hotplug-banner {
+  position: fixed;
+  right: 24px;
+  bottom: calc(var(--ui-footer) + 14px);
+  z-index: 75;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(560px, calc(100vw - var(--ui-rail) - 48px));
+  padding: 12px 16px;
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-accent);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  color: var(--ui-text);
+}
+
+.local-hotplug-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.local-hotplug-reconnect,
+.local-btn-primary {
+  padding: 6px 12px;
+  background: var(--ui-accent);
+  color: var(--ui-on-accent);
+  border: 1px solid var(--ui-accent);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.local-hotplug-reconnect:hover:not(:disabled),
+.local-btn-primary:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+
+.local-hotplug-dismiss,
+.local-btn-secondary {
+  padding: 6px 12px;
+  background: var(--ui-raised);
+  color: var(--ui-text);
+  border: 1px solid var(--ui-line);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.local-hotplug-dismiss:hover:not(:disabled),
+.local-btn-secondary:hover:not(:disabled) {
+  background: var(--ui-hover);
+}
+
+.local-btn-danger {
+  padding: 6px 12px;
+  background: var(--ui-danger-bg);
+  color: var(--ui-error);
+  border: 1px solid var(--ui-error);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* 四分类精准排障卡片 */
+.local-troubleshoot-card {
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-error);
+  border-radius: 8px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.local-troubleshoot-card[data-severity="warning"] {
+  border-color: #d97706;
+}
+
+.local-troubleshoot-card[data-severity="info"] {
+  border-color: var(--ui-line);
+}
+
+.local-troubleshoot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.local-troubleshoot-head > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.local-troubleshoot-badge {
+  font: 600 11px Consolas, monospace;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--ui-danger-bg);
+  color: var(--ui-error);
+}
+
+.local-troubleshoot-card[data-severity="info"] .local-troubleshoot-badge {
+  background: var(--ui-raised);
+  color: var(--ui-muted);
+}
+
+.local-troubleshoot-close {
+  background: transparent;
+  border: 0;
+  color: var(--ui-muted);
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.local-troubleshoot-close:hover {
+  background: var(--ui-hover);
+  color: var(--ui-text);
+}
+
+.local-troubleshoot-summary {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ui-muted);
+}
+
+.local-troubleshoot-steps {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--ui-text);
+}
+
+.local-troubleshoot-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+/* 侧滑连接诊断中心 */
+.local-diag-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 80;
+}
+
+.local-diag-drawer {
+  position: fixed;
+  top: var(--ui-header);
+  right: 0;
+  bottom: var(--ui-footer);
+  width: min(460px, 92vw);
+  background: var(--ui-panel);
+  border-left: 1px solid var(--ui-line);
+  z-index: 85;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -12px 0 36px rgba(0, 0, 0, 0.35);
+}
+
+.local-diag-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--ui-line);
+}
+
+.local-diag-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.local-diag-head p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--ui-muted);
+}
+
+.local-diag-close {
+  background: transparent;
+  border: 1px solid var(--ui-line);
+  color: var(--ui-muted);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.local-diag-close:hover {
+  background: var(--ui-hover);
+  color: var(--ui-text);
+}
+
+.local-diag-body {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.local-diag-section h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--ui-muted);
+}
+
+.local-diag-kv-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.local-diag-kv {
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.local-diag-kv span {
+  font-size: 11px;
+  color: var(--ui-muted);
+}
+
+.local-diag-kv strong {
+  font: 600 13px Consolas, "Segoe UI", monospace;
+  color: var(--ui-text);
+}
+
+.local-diag-device-row {
+  background: var(--ui-raised);
+  border: 1px solid var(--ui-line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.local-diag-device-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.local-diag-device-title span {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--ui-panel);
+  color: var(--ui-muted);
+}
+
+.local-diag-device-title span.is-open {
+  color: var(--ui-success);
+}
+
+.local-diag-device-meta {
+  margin-top: 4px;
+  font: 11px Consolas, monospace;
+  color: var(--ui-muted);
+}
+
+.local-diag-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ui-muted);
+}
+
+.local-diag-privacy {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--ui-muted);
+  line-height: 1.5;
+}
+
+.local-diag-logs {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--ui-field);
+  border: 1px solid var(--ui-line);
+  border-radius: 6px;
+  font: 11px/1.55 Consolas, monospace;
+  color: var(--ui-text);
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.local-diag-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--ui-line);
+}
+
+.local-diag-refresh {
+  padding: 7px 12px;
+  background: var(--ui-raised);
+  color: var(--ui-text);
+  border: 1px solid var(--ui-line);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.local-diag-copy {
+  padding: 7px 14px;
+  background: var(--ui-accent);
+  color: var(--ui-on-accent);
+  border: 1px solid var(--ui-accent);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
 }

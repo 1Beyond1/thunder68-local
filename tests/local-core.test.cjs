@@ -7,6 +7,10 @@ const {
   LOCAL_ORIGIN,
   isKeyboard,
   isConfigInterface,
+  classifyHidDiscovery,
+  redactSensitiveText,
+  sanitizeDiagnosticEntry,
+  formatSanitizedDiagnosticReport,
   isAllowedOrigin,
   isAllowedRequestUrl,
   validateVendorPath,
@@ -139,4 +143,60 @@ test('shouldPackageAppFile excludes debug audit and obsolete files', () => {
   assert.equal(shouldPackageAppFile('main.cjs'), true);
   assert.equal(shouldPackageAppFile('shell-helpers.js'), true);
   assert.equal(shouldPackageAppFile('vendor/thunder68/index.html'), true);
+});
+
+test('classifyHidDiscovery distinguishes ready, bluetooth-unsupported, and no-device', () => {
+  const ready = classifyHidDiscovery([
+    {name: 'THUNDER 68', vendorId: 0x369b, productId: 0x0211, collections: [{usagePage: 0xff60, usage: 0x61}]}
+  ]);
+  assert.equal(ready.reason, 'ready');
+  assert.equal(ready.configCandidatesCount, 1);
+
+  const btByName = classifyHidDiscovery([
+    {name: 'THUNDER 68 BT5.0', vendorId: 0x0a5c, productId: 0x8502, collections: [{usagePage: 1, usage: 6}]}
+  ]);
+  assert.equal(btByName.reason, 'bluetooth-unsupported');
+  assert.equal(btByName.suspectedBluetoothCount, 1);
+
+  const btSameVendor = classifyHidDiscovery([
+    {name: 'DAREU Keyboard', vendorId: 0x369b, productId: 0x0211, collections: [{usagePage: 1, usage: 6}]}
+  ]);
+  assert.equal(btSameVendor.reason, 'bluetooth-unsupported');
+  assert.equal(btSameVendor.sameVendorNonConfigCount, 1);
+
+  const empty = classifyHidDiscovery([
+    {name: 'Generic Mouse', vendorId: 0x046d, productId: 0xc52b, collections: [{usagePage: 1, usage: 2}]}
+  ]);
+  assert.equal(empty.reason, 'no-device');
+  assert.equal(empty.configCandidatesCount, 0);
+});
+
+test('diagnostic sanitization redacts personal paths and drops unwhitelisted/keystroke fields', () => {
+  assert.equal(
+    redactSensitiveText('Failed at C:\\Users\\Alice\\AppData\\data deviceSN=SN998877'),
+    'Failed at C:\\Users\\<redacted>\\AppData\\data deviceSN=<redacted>'
+  );
+  const safe = sanitizeDiagnosticEntry({
+    event: 'hid-open-error',
+    errorName: 'NotAllowedError',
+    message: 'Cannot open C:\\Users\\Bob\\driver',
+    typedKey: 'SecretPassword123',
+    key: 'a',
+    vendorId: 0x369b
+  });
+  assert.equal(safe.event, 'hid-open-error');
+  assert.equal(safe.errorName, 'NotAllowedError');
+  assert.equal(safe.message, 'Cannot open C:\\Users\\<redacted>\\driver');
+  assert.equal(safe.vendorId, 0x369b);
+  assert.equal('typedKey' in safe, false);
+  assert.equal('key' in safe, false);
+
+  const reportText = formatSanitizedDiagnosticReport({
+    meta: {appVersion: '0.2.1', dataDir: 'C:\\Users\\Alice\\qudong\\data'},
+    stats: {opens: 1, errors: 1},
+    entries: [{event: 'hid-open-error', errorName: 'NotAllowedError', typedText: 'MUST_NOT_LEAK'}]
+  });
+  assert.equal(reportText.includes('Alice'), false);
+  assert.equal(reportText.includes('MUST_NOT_LEAK'), false);
+  assert.equal(reportText.includes('NotAllowedError'), true);
 });

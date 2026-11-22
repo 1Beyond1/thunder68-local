@@ -13,5 +13,12 @@ function readAppVersion() {
 contextBridge.exposeInMainWorld('thunder68Local', Object.freeze({
   version: readAppVersion(),
   diagnostic: detail => ipcRenderer.send('diagnostic', detail),
-  setTheme: theme => ipcRenderer.send('theme', theme)
+  setTheme: theme => ipcRenderer.send('theme', theme),
+  readDiagnostics: () => ipcRenderer.invoke('diagnostics:read'),
+  onHidDiscovery: callback => {
+    if (typeof callback !== 'function') return () => {};
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on('hid-discovery', handler);
+    return () => ipcRenderer.removeListener('hid-discovery', handler);
+  }
 }));

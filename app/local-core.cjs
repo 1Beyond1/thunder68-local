@@ -38,6 +38,123 @@ function isConfigInterface(device) {
   ));
 }
 
+function isSuspectedBluetoothThunder68(device) {
+  if (!device || isConfigInterface(device)) return false;
+  const name = String(device.name || device.productName || '');
+  const looksLikeThunder = /thunder\s*68|雷电\s*68/i.test(name);
+  const looksLikeBt = /\b(?:bt|ble|bluetooth)\b|蓝牙/i.test(name);
+  if (looksLikeThunder) return true;
+  if (device.vendorId === SUPPORTED_VENDOR_ID && looksLikeBt) return true;
+  if (device.vendorId === SUPPORTED_VENDOR_ID && !isKeyboard(device)) return true;
+  return false;
+}
+
+function classifyHidDiscovery(deviceList) {
+  const list = Array.isArray(deviceList) ? deviceList : [];
+  const configCandidates = list.filter(isConfigInterface);
+  const sameVendorNonConfig = list.filter(d => d?.vendorId === SUPPORTED_VENDOR_ID && !isConfigInterface(d));
+  const suspectedBluetooth = list.filter(isSuspectedBluetoothThunder68);
+
+  let reason = 'no-device';
+  if (configCandidates.length > 0) {
+    reason = 'ready';
+  } else if (suspectedBluetooth.length > 0 || sameVendorNonConfig.length > 0) {
+    reason = 'bluetooth-unsupported';
+  }
+
+  return {
+    timestamp: new Date().toISOString(),
+    totalDevices: list.length,
+    configCandidatesCount: configCandidates.length,
+    sameVendorNonConfigCount: sameVendorNonConfig.length,
+    suspectedBluetoothCount: suspectedBluetooth.length,
+    reason,
+    candidates: configCandidates.map(d => ({
+      name: String(d?.name || d?.productName || 'THUNDER 68').trim().slice(0, 64) || 'THUNDER 68',
+      vendorId: typeof d?.vendorId === 'number' ? d.vendorId : null,
+      productId: typeof d?.productId === 'number' ? d.productId : null,
+      kind: getDeviceConnectionKind(d)
+    }))
+  };
+}
+
+function redactSensitiveText(input) {
+  if (typeof input !== 'string') return '';
+  return input
+    .replace(/([A-Za-z]:\\Users\\)([^\\/:*?"<>|\r\n]+)/gi, '$1<redacted>')
+    .replace(/(\/(?:Users|home)\/)([^/\s]+)/g, '$1<redacted>')
+    .replace(/\b(deviceSN|serialNumber)\s*[:=]\s*["']?[^"'\s,}]+["']?/gi, '$1=<redacted>');
+}
+
+const DIAGNOSTIC_STRING_FIELDS = new Set(['event', 'name', 'errorName', 'category', 'message', 'version', 'electron', 'reason']);
+const DIAGNOSTIC_NUMBER_FIELDS = new Set(['vendorId', 'productId', 'reportId', 'bytes', 'count']);
+
+function sanitizeDiagnosticEntry(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (typeof raw.event !== 'string' || !raw.event.trim()) return null;
+  const safe = {};
+  if (typeof raw.time === 'string' && raw.time) {
+    safe.time = raw.time.slice(0, 40);
+  }
+  safe.event = raw.event.trim().slice(0, 80);
+  for (const key of DIAGNOSTIC_STRING_FIELDS) {
+    if (key === 'event') continue;
+    if (typeof raw[key] === 'string' && raw[key]) {
+      const limit = key === 'message' ? 1200 : 120;
+      safe[key] = redactSensitiveText(raw[key].slice(0, limit));
+    }
+  }
+  for (const key of DIAGNOSTIC_NUMBER_FIELDS) {
+    if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) {
+      safe[key] = raw[key];
+    }
+  }
+  if (typeof raw.offline === 'boolean') safe.offline = raw.offline;
+  if (Array.isArray(raw.candidates)) {
+    safe.candidates = raw.candidates.slice(0, 10).map(item => ({
+      name: redactSensitiveText(String(item?.name || '').slice(0, 64)),
+      vendorId: typeof item?.vendorId === 'number' ? item.vendorId : null,
+      productId: typeof item?.productId === 'number' ? item.productId : null
+    }));
+  }
+  return safe;
+}
+
+function formatSanitizedDiagnosticReport({meta = {}, discovery = null, stats = {}, devices = [], entries = []} = {}) {
+  const safeMeta = {
+    appVersion: String(meta.appVersion || ''),
+    electron: String(meta.electron || ''),
+    platform: String(meta.platform || ''),
+    dataDir: redactSensitiveText(String(meta.dataDir || '')),
+    generatedAt: new Date().toISOString(),
+    privacyNote: '已自动脱敏：仅包含 WebHID 接口状态、收发计数与错误分类，不含按键文本、个人用户名与设备序列号。'
+  };
+  const safeDevices = Array.isArray(devices)
+    ? devices.slice(0, 20).map(d => ({
+        name: redactSensitiveText(String(d?.name || d?.productName || 'HID Device').slice(0, 64)),
+        vendorId: typeof d?.vendorId === 'number' ? '0x' + d.vendorId.toString(16).padStart(4, '0') : null,
+        productId: typeof d?.productId === 'number' ? '0x' + d.productId.toString(16).padStart(4, '0') : null,
+        opened: Boolean(d?.opened),
+        collections: Array.isArray(d?.collections)
+          ? d.collections.slice(0, 16).map(c => ({
+              usagePage: typeof c?.usagePage === 'number' ? '0x' + c.usagePage.toString(16) : null,
+              usage: typeof c?.usage === 'number' ? '0x' + c.usage.toString(16) : null
+            }))
+          : []
+      }))
+    : [];
+  const safeEntries = Array.isArray(entries)
+    ? entries.map(sanitizeDiagnosticEntry).filter(Boolean).slice(-60)
+    : [];
+  return JSON.stringify({
+    meta: safeMeta,
+    lastDiscovery: discovery || null,
+    sessionHidStats: stats || {},
+    authorizedHidDevices: safeDevices,
+    recentLogs: safeEntries
+  }, null, 2);
+}
+
 function isLocalUrl(url) {
   return url.protocol === 'thunder68:' && url.host === 'driver' && !url.username && !url.password;
 }
@@ -153,6 +270,11 @@ module.exports = {
   EXCLUDED_PACKAGE_FILES,
   isKeyboard,
   isConfigInterface,
+  isSuspectedBluetoothThunder68,
+  classifyHidDiscovery,
+  redactSensitiveText,
+  sanitizeDiagnosticEntry,
+  formatSanitizedDiagnosticReport,
   isLocalUrl,
   isAllowedOrigin,
   isAllowedRequestUrl,
