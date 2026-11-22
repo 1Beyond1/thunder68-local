@@ -2,9 +2,9 @@
 
 # Thunder68 Local Driver (Personal Offline Edition)
 
-A personal offline Electron desktop wrapper for the official DAREU Thunder68 WebHID configurator, offering offline execution, persistent light/dark workbench themes, USB wired and 2.4G wireless dongle support, local profile import, and read-back verification.
+A personal offline Electron desktop companion wrapper for the official DAREU Thunder68 WebHID configurator, offering strict offline isolation, flicker-free persistent themes & window geometry, USB wired & 2.4G wireless dongle support, a local profile snapshot & Diff library, a self-authored offline key & magnetic-switch feel tester, hot-plug auto-detection with a sanitized diagnostics center, and system-tray residency with global shortcuts.
 
-> **Scope & Licensing Notice**: This project is **not** an official DAREU Windows driver and does not install or replace any OS driver. The configuration UI and low-level WebHID protocol come from `https://oem.dareu.com/thunder68` (first captured on 2026-10-06 for personal offline use). The public repository **does not** bundle official vendor assets or distribute binaries containing them. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for full boundaries.
+> **Scope & Licensing Notice**: This project is **not** an official DAREU Windows driver, does not install or replace any OS driver, and does not craft custom low-level HID write packets. The configuration UI and WebHID protocol come from `https://oem.dareu.com/thunder68` (first captured on 2026-10-06 for personal offline use). The public repository, CI workflows, and Releases **never** bundle or redistribute official vendor assets or packaged binaries containing them. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 
@@ -12,38 +12,43 @@ A personal offline Electron desktop wrapper for the official DAREU Thunder68 Web
 
 ![Thunder68 Local Desktop Control Center Preview](docs/screenshots/desktop-control-center.png)
 
-*Offline desktop control center main screen (device connection view with dark / system theme).*
+*Offline desktop control center main screen (device view, companion tools rail, and dark / system theme).*
 
 ---
 
 ## Quick Start (Portable Build)
 
-1. Double-click `release/Thunder68-Local/Thunder68-Local.exe`. Keep the entire folder intact (you can move or copy the whole folder elsewhere; no Node.js, browser, or internet connection required).
-2. Connect your Thunder68 via **USB cable** or **2.4G wireless dongle**, then click **Connect Keyboard (连接键盘)** in the app.
-   - If the official web configurator is still connected to the keyboard, disconnect or close that browser tab first.
-   - When multiple Thunder68 devices are detected (e.g., both USB wired and 2.4G receiver plugged in), the app shows a device picker dialog listing connection type and PID.
-   - In 2.4G mode, official dongle pairing and disconnect confirmation modals display properly centered; once connected, the sidebar and status header show connection mode, 2.4G battery percentage, and official core version.
-3. Adjust key mappings, lighting, rapid trigger, advanced keys, game profiles, or general settings. You can also use the footer's **Import Config (导入配置)** button to load an existing profile, or **Re-read & Verify (重新读取核对)** to reconnect and compare read-back device state.
-4. Close the window to exit. Launching a second instance focuses the existing window via single-instance lock.
+1. Double-click `release/Thunder68-Local/Thunder68-Local.exe`. Keep the folder intact (move it to a fixed directory before enabling auto-launch; no Node.js, browser, or internet connection required).
+2. Connect your Thunder68 via **USB cable** or **2.4G wireless dongle**, then click **Connect Keyboard (连接键盘)**.
+   - **Hot-Plug Auto-Detection**: Plugging in or waking a Thunder68 while disconnected shows a non-intrusive floating bar with one-click reconnect (never hijacking an active session).
+   - **4-Category Precision Troubleshooting**: Connection issues are classified into *No Device Detected / Bluetooth Mode Unsupported / Handle Occupied by Web Configurator or Another Process / HID Communication Failed* with tailored steps, plus a slide-over **Diagnostics Center (连接诊断)** with one-click sanitized report copy.
+   - **Multi-Device & 2.4G Support**: Multiple Thunder68 interfaces open a clear picker dialog; 2.4G pairing modals stay centered and connection mode + 2.4G battery percentage appear in the sidebar, header, and tray menu.
+3. Use the official configuration pages or the **Companion Tools (伴侣工具)** in the left rail:
+   - **Local Profile Library (配置方案库)**: Capture clean 68-key snapshots (volatile runtime fields stripped) with names and scene tags (e.g. FPS / Office), import/export JSON, inspect travel/RT/remap/lighting/superkey/macro Diffs, and apply via the official native `#fileInput` (`USER_IMPORT_WHOLE_CONFIG`) channel after 68-key range validation, `config.mask` concurrency guard, and automatic pre-write rollback snapshot creation.
+   - **Offline Key & Feel Tester (按键与手感测试)** *(works even without a keyboard connected)*: 100% self-authored 68-key matrix & peak NKRO tracker, RT chatter/double-click detector (`<15ms` severe red / `<25ms` warning amber, displaying read-only live travel/RT params when connected), and FPS counter-strafe / SOCD overlap analyzer (`A/D` & `W/S` overlap duration, gap duration, and zero-overlap rate). Listeners automatically detach when leaving the page.
+   - **Desktop Companion (桌面伴侣)**: Minimize-to-tray on close, tray context menu (live status/battery, quick profile switch, show/hide, quit), optional silent launch at login (`--minimized`), configurable global hotkeys (default `CommandOrControl+Alt+T`), and throttled 2.4G low-battery notifications.
 
-Local profile data and diagnostic logs are stored in the `data/` directory beside the executable (if the directory is read-only, the app automatically falls back to the OS userData directory and logs the fallback). Diagnostics record only connection state, HID report byte lengths, and errors — never typed text. Open the folder anytime via **Driver → Open Local Data Folder** (press `Alt` to reveal the menu bar).
+Local profiles, preferences, and logs are stored in `data/` beside the executable (`preferences.json`, `profiles/*.json`, `diagnostics.jsonl`; falls back automatically to OS userData if read-only). Diagnostics are strictly sanitized and **never record typed text, OS usernames, or device serial numbers**.
 
 ---
 
-## Features & Recent Improvements (v0.2.1)
+## Key Features & Engineering Highlights
 
-- **Strict Offline Isolation**: Serves local assets through a custom asynchronous `thunder68://driver` protocol with strict CSP and request interception blocking all remote traffic.
-- **USB Wired & 2.4G Wireless Support**:
-  - Preserves official sidebar modals (2.4G dongle pairing and disconnect dialogs) and the hidden `#fileInput` element, exposing an **Import Config** action in the footer.
-  - Parses and displays connection mode (USB Wired / 2.4G Wireless), 2.4G battery level, and official bundle version.
-- **Bilingual UI Compatibility & Workbench Redesign**:
-  - Responsive two-column workbench on wide windows and vertical stacking on narrow viewports, with Dark, Light, and System themes persisted locally.
-  - Preserves the official keyboard photo and native Canvas hit testing while adding batch selection (WASD, Letters, All, Invert, per-key chips) and a searchable key palette (distinguishing main-row digits, numpad keys, and left/right modifiers).
-  - Shell adapter (`app/shell-helpers.js` + `app/ui.js`) matches **both Chinese and English labels** with structural DOM fallbacks (top navigation, exit button, lighting subtabs, all five keymap categories including macro grid, quick-select menu, loading overlay, and reset buttons).
-- **Reliable Feedback & Read-Back State Machine**:
-  - Decouples HID diagnostic log sampling from UI output feedback debouncing, and isolates page script errors from USB/2.4G HID transport errors.
-  - **Re-read & Verify** uses an explicit state machine (`createVerifyStateMachine`) that only reports completion after a real disconnect/reconnect cycle and a stable 68-key read-back, preventing false positives from `redux-persist` cache.
-- **v0.2.0 / v0.2.1 Fixes**: Reorganized workbench layout; fixed overlay z-index over the header, tiny media key labels, cramped advanced-key descriptions, oversized game profile tabs, hidden combination-key modifiers, truncated macro grids, and stale proxy clicks across category switches; warns when batch-editing keys with mixed values.
+- **Strict Offline Isolation & Protocol Boundary**: Custom async `thunder68://driver` protocol + strict CSP block all remote traffic; profile writes strictly reuse the official `#fileInput` (`USER_IMPORT_WHOLE_CONFIG`) pipeline with zero custom HID packets.
+- **Hot-Plug Detection, 4-Category Troubleshooting & Diagnostics Center**:
+  - `navigator.hid` `connect`/`disconnect` awareness with non-intrusive reconnect bar.
+  - Full `error.name` propagation + main-process discovery classification into 4 actionable troubleshooting cards; collapsible guide preserved on narrow screens (`<= 1279px`); high-contrast dark-mode SVG travel badges.
+  - Slide-over Diagnostics Center showing authorized WebHID interfaces, session HID counters, and privacy-safe report copy.
+- **Local Profile Snapshot, Diff & Safe Apply**:
+  - Strips runtime/device-identity fields into `data/profiles/*.json`, supports importing both library envelopes and raw official JSON, provides visual Diff tables, and captures an automatic `_auto-rollback` snapshot before every apply.
+- **Self-Authored Offline Key Tester & Magnetic-Switch Analyzer**:
+  - Pure geometric 68-key matrix (zero copied vendor images) with NKRO, `<15ms`/`<25ms` chatter alerts, live read-only travel/RT lookup when connected, and `A/D` + `W/S` counter-strafe/SOCD timing bars.
+- **System Tray Companion & Flicker-Free Startup (Phase A)**:
+  - Persists theme & multi-monitor validated window bounds in `data/preferences.json`, applying matching window chrome & initial `data-theme` before first paint to eliminate dark flash in light mode.
+  - Self-authored minimalist tray/window icon, tray quick-switch menu, minimize-to-tray, optional `--minimized` login start (with fixed-directory notice for portable builds), global shortcuts, and 2.4G low-battery hysteresis alerts.
+- **Clean-Clone CI & Slimmed Portable Build**:
+  - Decouples vendor hash tests (`npm run test:vendor`) from `npm test` so clean clones without `app/vendor/` pass 100%; GitHub Actions runs Windows Node 20/22 CI with a static compliance guard (`npm run check:compliance`).
+  - `npm run build` prunes 53 unnecessary Chromium `locales/*.pak` files (keeping `zh-CN.pak` and `en-US.pak`), cutting a clean portable build from `374.00 MiB` to `326.83 MiB` (**47.17 MiB saved**) while preserving all `LICENSE*` / `THIRD_PARTY_NOTICES.md` files and the 220-asset audit gate.
 
 ---
 
@@ -52,7 +57,7 @@ Local profile data and diagnostic logs are stored in the `data/` directory besid
 ### Prerequisites
 
 - Windows
-- Node.js (with `node:test`, Node 20+ recommended) and `npm`
+- Node.js (Node 20+ / 22+ with built-in `node:test`) and `npm`
 
 ### First-Time Setup
 
@@ -67,22 +72,25 @@ npm run sync
 npm start
 ```
 
-- **Asset Sync**: `npm run sync` downloads assets directly from the official site into `app/vendor/` using `research/asset-paths.json` plus references discovered from HTML/CSS/JS, generating `app/vendor/manifest.json` with SHA256 hashes (including `/thunder68/index.html`). Any download failure exits non-zero. To force a clean re-download and prune stale files:
-  ```powershell
-  node scripts/sync-official.cjs --force
-  ```
-- **Manual Electron Runtime Download**: If `npm ci` fails to fetch the Electron binary, run `node scripts/download-runtime.cjs` (add `--mirror` for faster ranged mirror downloads). Downloaded archives are always verified against Electron's official `checksums.json` SHA256.
+- **Asset Sync**: `npm run sync` downloads assets directly from the official site into `app/vendor/` and generates `app/vendor/manifest.json` (with SHA256 hashes). Use `node scripts/sync-official.cjs --force` to refresh and prune stale files.
+- **Manual Electron Runtime Download**: If `npm ci` fails to fetch the Electron binary, run `node scripts/download-runtime.cjs` (optional `--mirror`), verified against Electron's official `checksums.json` SHA256.
 
-### Testing, Packaging & Auditing
+### Testing, Compliance, Packaging & Auditing
 
 ```powershell
-# Run all 23 unit tests (core device/path security, bilingual adapter, key classifier, feedback/verify state machines, build/audit scripts)
+# Run all 42 clean-clone unit tests (passes 100% without app/vendor/)
 npm test
 
-# Build local portable package into release/Thunder68-Local/ (mirrors app/, excludes debug files, prunes orphans)
+# Static compliance guard (verifies Git never tracks app/vendor/, research/decoded.js, or build outputs)
+npm run check:compliance
+
+# Verify locally synced vendor SHA256 hashes (requires npm run sync)
+npm run test:vendor
+
+# Build slimmed local portable package into release/Thunder68-Local/ (prunes extra locales & reports size savings)
 npm run build
 
-# Verify vendor SHA256 hashes, static asset routing, and release/ parity (writes output/package-audit.json)
+# Static integrity audit across 220 vendor assets and release/ parity (writes output/package-audit.json)
 npm run audit:package
 
 # Headless offscreen Electron self-test (no visible window, writes output/self-test.json)
@@ -91,7 +99,7 @@ npx electron . --self-test --background-test
 
 ### Pre-Redesign Source Tag
 
-Earlier self-authored source prior to the v0.2 redesign is preserved at tag `pre-ui-redesign-20261006`. After saving uncommitted changes, run `git switch --detach pre-ui-redesign-20261006` to inspect it. Git switches only tracked self-authored source; ignored local vendor assets and runtime data remain untouched. Public clones do not contain `research/official-main.js`, `research/decoded.js`, or local deobfuscation scripts.
+Earlier self-authored source prior to the v0.2 redesign is preserved at tag `pre-ui-redesign-20261006`. After saving uncommitted changes, run `git switch --detach pre-ui-redesign-20261006` to inspect it.
 
 ---
 
@@ -99,14 +107,14 @@ Earlier self-authored source prior to the v0.2 redesign is preserved at tag `pre
 
 ### Capability & Compliance Limits
 
-- **Remote Services Excluded**: The embedded online keyboard tester (`kbtest5.driveall.cn`), online firmware version checks, and DFU firmware updates depend on remote servers and are intentionally blocked/excluded. Use the official website for firmware upgrades.
-- **No Official React Source**: Only the compiled static bundle (fetched locally via `npm run sync`) is present — no original React source, TypeScript definitions, or source maps.
-- **No Startup Auto-Restore Yet**: Applying settings automatically on OS startup is not implemented. Seeing "sent" in the UI or saved local state does not by itself prove the keyboard persisted settings across power cycles.
+- **Remote Services Excluded**: The embedded online keyboard tester (`kbtest5.driveall.cn`), online firmware version checks, and DFU updates depend on remote servers and remain blocked/excluded. Use the official website for firmware upgrades.
+- **Key Tester Scope**: The offline key & feel tester analyzes OS keyboard events (`KeyboardEvent.code` + `performance.now()`) for actuation/chatter/counter-strafe timing — not hardware ADC millimeter travel waveforms.
+- **No Process Hooks / Anti-Cheat Risk**: Process-detection auto-switching is intentionally omitted to avoid anti-cheat false positives and unverified differential writes. Seeing "sent" in the UI does not by itself prove persistence across power cycles.
 
 ### Verification Status (Honest Scope)
 
-- **Verified**: All 23 automated unit tests (`npm test`), static integrity audit across 220 vendor assets and 231 packaged app files (`npm run audit:package`), headless Electron self-test, dark/light/system theme switching & reload persistence, three viewport sizes (1024×720, 1400×940, 1920×1080), all six navigation pages, key selection/search, and read-only USB connection & re-read comparison (error banners checked via simulated events).
-- **Not Yet Hardware-Verified Item by Item**: Actual hardware writes and read-backs for key remapping, lighting parameters, actuation/RT travel, macros, and advanced keys; persistence across unplug/power-loss/reboot; end-to-end 2.4G pairing and write verification on physical hardware.
+- **Verified**: All 42 clean-clone automated unit tests (`npm test`), vendor SHA256 check (`npm run test:vendor`), Git compliance guard (`npm run check:compliance`), static package audit across 220 vendor assets and 238 packaged files (`npm run audit:package`, 0 issues), and headless offscreen Electron smoke tests for both dev and slimmed portable executables (0 page errors); plus prior viewport, theme, navigation, and read-only USB connection checks.
+- **Not Yet Hardware-Verified Item by Item**: Physical firmware write persistence and power-cycle retention for profile library `#fileInput` whole-config imports (keymaps, lighting, actuation/RT, macros, advanced keys); physical 2.4G pairing and low-battery end-to-end hardware regression.
 
 ---
 

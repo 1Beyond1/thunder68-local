@@ -41,14 +41,19 @@
 
 | 文件 | 职责 |
 | --- | --- |
-| `app/main.cjs` | Electron 主进程：单实例启动锁、只读目录回退、自定义 `thunder68://driver` 异步协议与 CSP/离线拦截、WebHID 设备过滤与多设备选择对话框、窗口与菜单、`--self-test` 诊断入口 |
-| `app/local-core.cjs` | 纯逻辑核心模块：允许的 VID/PID（`0x369b` / 有线 `0x0211` / 2.4G `0x0434`）与配置接口判定、URL 与路径防穿越校验、设备显示标签、可写数据目录探测、打包排除清单 |
-| `app/preload.cjs` | 隔离的 `contextBridge` 桥接：向渲染层只读暴露版本号、诊断上报与标题栏主题切换 |
-| `app/shell-helpers.js` | 浏览器与 Node 双端复用的 UMD 辅助模块：中英双语标签匹配与结构兜底、2.4G 电量与版本解析、按键分类器、HID 反馈节流控制器、重新读取核对状态机 |
-| `app/desktop.js` | 渲染层 WebHID 诊断与反馈事件桥接（包装 `requestDevice` / `open` / `close` / `sendReport` / `inputreport`） |
+| `app/main.cjs` | Electron 主进程：单实例锁、只读目录回退、自定义 `thunder68://driver` 协议与防闪屏初始主题注入、WebHID 过滤与枚举分类、配置方案库与偏好 IPC、系统托盘常驻、全局快捷键、2.4G 低电轻提示、`--minimized` 与 `--self-test` 入口 |
+| `app/local-core.cjs` | 纯逻辑核心模块：VID/PID 与配置接口判定、蓝牙/非配置枚举分类、诊断日志脱敏、URL 与路径防穿越、方案文件原子存储、偏好与多屏窗口几何校验、低电滞回判定、打包排除清单 |
+| `app/profile-core.js` | 浏览器与 Node 双端复用的 UMD 方案核心：剥离运行态字段的快照清洗、68 键与参数范围校验、官方 `#fileInput` 导入体构造、双方案差异对比（Diff） |
+| `app/preload.cjs` | 隔离的 `contextBridge` 桥接：向渲染层暴露版本号、诊断上报/读取、主题同步、设备状态上报、配置方案库 IPC 与伴侣偏好 IPC |
+| `app/shell-helpers.js` | 浏览器与 Node 双端复用的 UMD 辅助模块：双语标签匹配与结构兜底、2.4G 电量解析、按键分类器、四分类精准排障判定、热插拔设备判定、暗/浅色行程徽章配色、HID 反馈节流、重新读取核对状态机 |
+| `app/desktop.js` | 渲染层 WebHID 诊断与反馈事件桥接（含完整 `error.name` 透传、会话 HID 计数器与脱敏内存事件环） |
 | `app/vendor-bridge.js` | 受限的 React/Redux 读取与选键桥接（不修改官方 bundle） |
-| `app/ui.js` | 桌面工作台外壳：顶栏、侧边导航、主题切换、欢迎页、可搜索按键分配器、底栏导入配置与重新读取核对流程 |
-| `app/desktop.css` | 主题变量（暗色/浅色）与全套桌面工作台样式覆盖；**注意必须保留 `#root .sidebar > .modal-overlay` 弹窗放行规则及 `#fileInput` 移出视口策略** |
+| `app/ui.js` | 桌面工作台外壳：顶栏、侧边导航与伴侣工具宿主、热插拔重连浮条、四分类排障卡片、侧滑连接诊断中心、主题切换、可搜索按键分配器与重新读取核对流程 |
+| `app/profiles-panel.js` | 本地配置方案库 UI：快照捕获、JSON 导入导出、Diff 对比表格、带自动回滚与 `config.mask` 防并发守卫的原生 `#fileInput` 写入 |
+| `app/key-tester.js` | 浏览器与 Node 双端复用的纯自研离线按键与磁轴手感校验器：68 键矩阵、NKRO 统计、`<15ms`/`<25ms` RT 连击检测、FPS `A/D` & `W/S` 急停 SOCD 重叠分析器 |
+| `app/companion-panel.js` | 桌面伴侣设置面板：托盘最小化、开机静默自启（`--minimized`）、防闪屏主题/窗口记忆、全局热键与 2.4G 低电量提醒配置 |
+| `app/assets/` | 自研 MIT 简约矢量/PNG 托盘与应用图标（严禁挪用官方商标） |
+| `app/desktop.css` | 主题变量（暗色/浅色）、窄屏可折叠排障条与全套桌面工作台/伴侣工具样式；**注意必须保留 `#root .sidebar > .modal-overlay` 弹窗放行规则及 `#fileInput` 移出视口策略** |
 | `app/redesign-audit.cjs` | 仅开发期使用的 UI/主题自动化审计模块（打包时由 `shouldPackageAppFile` 自动排除） |
 
 ### `scripts/`
@@ -57,8 +62,9 @@
 | --- | --- |
 | `scripts/sync-official.cjs` | 从官网拉取静态资源到 `app/vendor/` 并生成 `manifest.json`；支持 `--force` 强制重拉并清理过期陈旧文件 |
 | `scripts/download-runtime.cjs` | 手动下载官方 Electron 运行时 zip（支持 `--mirror` 镜像加速）并按 `node_modules/electron/checksums.json` 校验 SHA256 |
-| `scripts/build-portable.cjs` | 校验依赖完整性，将 Electron 运行时与 `app/` 镜像同步到 `release/Thunder68-Local/`，自动剔除排除文件与孤儿文件 |
+| `scripts/build-portable.cjs` | 校验依赖完整性，镜像同步 Electron 运行时与 `app/` 到 `release/Thunder68-Local/`，自动裁剪 `locales/` 仅保留 `zh-CN.pak` 与 `en-US.pak` 并输出瘦身体积统计 |
 | `scripts/audit-package.cjs` | 静态核验 `app/vendor/manifest.json` 哈希、`research/asset-paths.json` 路由可达性以及 `release/` 打包副本一致性，报告写入 `output/package-audit.json` |
+| `scripts/check-compliance.cjs` | Git 静态合规守卫：确保 `git ls-files` 不含 `app/vendor/`、`research/decoded.js`、打包产物与本地运行数据 |
 
 ## 4. 常用开发、测试与打包命令
 
@@ -69,13 +75,17 @@ npm run sync
 # 如需强制重新拉取并清理过期旧资源
 node scripts/sync-official.cjs --force
 
-# 运行单元测试（node:test，当前覆盖 23 项用例）
+# 运行干净环境单元测试（node:test，当前覆盖 42 项用例，无需 app/vendor/）
 npm test
+
+# 静态合规检查与本地官方资产 SHA256 校验
+npm run check:compliance
+npm run test:vendor
 
 # 本地启动开发调试
 npm start
 
-# 构建便携版并执行静态打包一致性审计
+# 构建瘦身便携版并执行静态打包一致性审计
 npm run build
 npm run audit:package
 
