@@ -8,6 +8,14 @@ A personal offline Electron desktop wrapper for the official DAREU Thunder68 Web
 
 ---
 
+## Interface Preview
+
+![Thunder68 Local Desktop Control Center Preview](docs/screenshots/desktop-control-center.png)
+
+*Offline desktop control center main screen (device connection view with dark / system theme).*
+
+---
+
 ## Quick Start (Portable Build)
 
 1. Double-click `release/Thunder68-Local/Thunder68-Local.exe`. Keep the entire folder intact (you can move or copy the whole folder elsewhere; no Node.js, browser, or internet connection required).

@@ -8,6 +8,14 @@
 
 ---
 
+## 界面预览
+
+![雷电68 本地驱动桌面端控制中心界面预览](docs/screenshots/desktop-control-center.png)
+
+*离线桌面控制中心主界面（设备连接页与深色/跟随系统主题外观）。*
+
+---
+
 ## 快速使用（便携版）
 
 1. 双击运行 `release/Thunder68-Local/Thunder68-Local.exe`（保持整个文件夹完整，可将整目录复制到其他路径；无需安装 Node.js、无需浏览器或联网）。
