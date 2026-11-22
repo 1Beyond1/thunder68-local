@@ -77,10 +77,37 @@ test('validateProfileConfig enforces 68-key count, uniqueness, and travel/RT/lig
 
   const badTravel = makeValidConfig();
   badTravel.keyValues[0].travelValue = 9.99;
+  badTravel.keyValues[1].isRTEnabled = true;
   badTravel.keyValues[1].sensitivity = 0;
   const resRange = profileCore.validateProfileConfig(badTravel);
   assert.equal(resRange.valid, false);
   assert.ok(resRange.errors.length >= 2);
+
+  // Official firmware readback sets null (or 0) sensitivity on keys with RT disabled (e.g. ArrowR in game presets)
+  const gamePresetReadback = makeValidConfig({settings: {sleeptime: 60, rate: 8000}});
+  gamePresetReadback.keyValues[0].isRTEnabled = true;
+  gamePresetReadback.keyValues[0].travelValue = 0.2;
+  gamePresetReadback.keyValues[0].sensitivity = 0.02;
+  gamePresetReadback.keyValues[0].triggerSensitivity = null;
+  gamePresetReadback.keyValues[0].resetSensitivity = null;
+  gamePresetReadback.keyValues[4].id = 'ArrowR';
+  gamePresetReadback.keyValues[4].isRTEnabled = false;
+  gamePresetReadback.keyValues[4].sensitivity = null;
+  gamePresetReadback.keyValues[4].triggerSensitivity = null;
+  gamePresetReadback.keyValues[4].resetSensitivity = null;
+  gamePresetReadback.keyValues[5].id = 'ArrowL';
+  gamePresetReadback.keyValues[5].isRTEnabled = false;
+  gamePresetReadback.keyValues[5].sensitivity = 0;
+  gamePresetReadback.keyValues[5].triggerSensitivity = 0;
+  gamePresetReadback.keyValues[5].resetSensitivity = 0;
+  const sanitizedPreset = profileCore.sanitizeProfileConfig(gamePresetReadback);
+  assert.equal(sanitizedPreset.keyValues[4].sensitivity, null);
+  assert.equal(sanitizedPreset.keyValues[4].triggerSensitivity, null);
+  assert.equal(sanitizedPreset.keyValues[4].resetSensitivity, null);
+  assert.equal(sanitizedPreset.settings.rate, 8000);
+  const presetValidation = profileCore.validateProfileConfig(sanitizedPreset);
+  assert.equal(presetValidation.valid, true);
+  assert.deepEqual(presetValidation.errors, []);
 
   const dupKey = makeValidConfig();
   dupKey.keyValues[1].id = dupKey.keyValues[0].id;

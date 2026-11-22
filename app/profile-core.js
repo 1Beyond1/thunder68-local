@@ -48,6 +48,7 @@
   }
 
   function roundMm(value) {
+    if (value === null || value === undefined || value === '') return null;
     const num = Number(value);
     return Number.isFinite(num) ? Math.round(num * 100) / 100 : null;
   }
@@ -189,21 +190,17 @@
       copy.keyValues = copy.keyValues.map(item => {
         if (!item || typeof item !== 'object') return item;
         const normalized = {...item};
-        if (normalized.travelValue !== undefined) {
+        if (normalized.travelValue !== undefined && normalized.travelValue !== null) {
           const v = roundMm(normalized.travelValue);
           if (v !== null) normalized.travelValue = v;
         }
-        if (normalized.sensitivity !== undefined) {
-          const v = roundMm(normalized.sensitivity);
-          if (v !== null) normalized.sensitivity = v;
-        }
-        if (normalized.triggerSensitivity !== undefined) {
-          const v = roundMm(normalized.triggerSensitivity);
-          if (v !== null) normalized.triggerSensitivity = v;
-        }
-        if (normalized.resetSensitivity !== undefined) {
-          const v = roundMm(normalized.resetSensitivity);
-          if (v !== null) normalized.resetSensitivity = v;
+        for (const field of ['sensitivity', 'triggerSensitivity', 'resetSensitivity']) {
+          if (normalized[field] === null || normalized[field] === undefined || normalized[field] === '') {
+            if (normalized[field] === '') normalized[field] = null;
+            continue;
+          }
+          const v = roundMm(normalized[field]);
+          if (v !== null) normalized[field] = v;
         }
         normalized.isRTEnabled = Boolean(normalized.isRTEnabled);
         normalized.isIndependentSensitivity = Boolean(normalized.isIndependentSensitivity);
@@ -257,10 +254,13 @@
         if (typeof key.isRTEnabled !== 'boolean') {
           errors.push(`按键 ${id} 的 isRTEnabled 必须为布尔值。`);
         }
+        const rtEnabled = Boolean(key.isRTEnabled);
+        const independentRt = Boolean(key.isIndependentSensitivity);
         for (const field of ['sensitivity', 'triggerSensitivity', 'resetSensitivity']) {
           if (key[field] === undefined || key[field] === null) continue;
           const val = Number(key[field]);
-          if (!Number.isFinite(val) || val < MIN_TRAVEL_MM || val > MAX_TRAVEL_MM) {
+          const isFieldActive = rtEnabled && (independentRt ? field !== 'sensitivity' : field === 'sensitivity');
+          if (!Number.isFinite(val) || val < 0 || val > MAX_TRAVEL_MM || (val < MIN_TRAVEL_MM && (val !== 0 || isFieldActive))) {
             errors.push(`按键 ${id} 的 ${field} 超范围（${key[field]}，允许 ${MIN_TRAVEL_MM}–${MAX_TRAVEL_MM} mm）。`);
           }
         }
