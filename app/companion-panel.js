@@ -34,6 +34,7 @@
       const themeSel = container.querySelector('.local-pref-theme');
       const minTray = container.querySelector('.local-pref-min-tray');
       const autoLaunch = container.querySelector('.local-pref-autolaunch');
+      const autoConnect = container.querySelector('.local-pref-autoconnect');
       const lowBat = container.querySelector('.local-pref-lowbat');
       const lowBatThreshold = container.querySelector('.local-pref-lowbat-threshold');
       const toggleHotkey = container.querySelector('.local-pref-hotkey-toggle');
@@ -47,6 +48,7 @@
         autoLaunch.checked = Boolean(p.autoLaunch);
         autoLaunch.disabled = !state.loginItemSupported;
       }
+      if (autoConnect) autoConnect.checked = Boolean(p.autoConnectOnLaunch);
       if (lowBat) lowBat.checked = Boolean(p.lowBatteryAlert);
       if (lowBatThreshold) {
         lowBatThreshold.value = String(p.lowBatteryThreshold ?? 20);
@@ -110,6 +112,13 @@
                   <p>登录 Windows 后直接驻留系统托盘，不主动弹出主窗口。</p>
                 </div>
                 <input type="checkbox" class="local-pref-autolaunch">
+              </label>
+              <label class="local-pref-row">
+                <div>
+                  <strong>打开窗口时自动预读键盘配置</strong>
+                  <p>开启后，启动打开主窗口时若检测到单个已接入的雷电68，将自动静默连接并立即预读配置；未接入或多设备时保持静默，不弹窗打扰。</p>
+                </div>
+                <input type="checkbox" class="local-pref-autoconnect">
               </label>
               <div class="local-pref-notice local-pref-portable-note"></div>
             </section>
@@ -199,6 +208,9 @@
         });
         mountEl.querySelector('.local-pref-autolaunch').addEventListener('change', e => {
           savePatch({autoLaunch: e.currentTarget.checked}, e.currentTarget.checked ? '已开启开机静默自启' : '已关闭开机自启');
+        });
+        mountEl.querySelector('.local-pref-autoconnect').addEventListener('change', e => {
+          savePatch({autoConnectOnLaunch: e.currentTarget.checked}, e.currentTarget.checked ? '已开启启动自动预读配置' : '已关闭启动自动预读配置');
         });
         mountEl.querySelector('.local-pref-lowbat').addEventListener('change', e => {
           savePatch({lowBatteryAlert: e.currentTarget.checked}, '低电量提醒设置已更新');

@@ -377,6 +377,7 @@ const DEFAULT_PREFERENCES = Object.freeze({
   }),
   minimizeToTray: true,
   autoLaunch: false,
+  autoConnectOnLaunch: true,
   lowBatteryAlert: true,
   lowBatteryThreshold: 20,
   globalShortcuts: Object.freeze({
@@ -422,6 +423,7 @@ function normalizePreferences(raw) {
     windowBounds: {x, y, width, height, maximized},
     minimizeToTray: typeof src.minimizeToTray === 'boolean' ? src.minimizeToTray : DEFAULT_PREFERENCES.minimizeToTray,
     autoLaunch: typeof src.autoLaunch === 'boolean' ? src.autoLaunch : DEFAULT_PREFERENCES.autoLaunch,
+    autoConnectOnLaunch: typeof src.autoConnectOnLaunch === 'boolean' ? src.autoConnectOnLaunch : DEFAULT_PREFERENCES.autoConnectOnLaunch,
     lowBatteryAlert: typeof src.lowBatteryAlert === 'boolean' ? src.lowBatteryAlert : DEFAULT_PREFERENCES.lowBatteryAlert,
     lowBatteryThreshold: clampNumber(src.lowBatteryThreshold, 5, 50, DEFAULT_PREFERENCES.lowBatteryThreshold),
     globalShortcuts: {toggleWindow, quickSwitchProfile}
@@ -517,6 +519,21 @@ function shouldTriggerLowBatteryAlert({enabled, threshold = 20, isWireless, batt
     return {notify: false, nextNotified: false};
   }
   return {notify: false, nextNotified: alreadyNotified};
+}
+
+function evaluateSilentAutoConnectPolicy({
+  diagnosing = false,
+  autoConnectOnLaunch = true,
+  alreadyAttempted = false,
+  windowVisible = false,
+  deviceOpened = false
+} = {}) {
+  if (diagnosing) return {allow: false, reason: 'diagnosing'};
+  if (!autoConnectOnLaunch) return {allow: false, reason: 'disabled'};
+  if (alreadyAttempted) return {allow: false, reason: 'already-attempted'};
+  if (!windowVisible) return {allow: false, reason: 'window-hidden'};
+  if (deviceOpened) return {allow: false, reason: 'already-opened'};
+  return {allow: true, reason: 'ready'};
 }
 
 function createAsyncDiagnosticLogger({getLogFile, maxBytes = 2 * 1024 * 1024, flushDelayMs = 40} = {}) {
@@ -652,5 +669,6 @@ module.exports = {
   injectInitialThemeIntoHtml,
   sanitizeWindowBounds,
   shouldTriggerLowBatteryAlert,
+  evaluateSilentAutoConnectPolicy,
   createAsyncDiagnosticLogger
 };

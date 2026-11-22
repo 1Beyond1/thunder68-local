@@ -156,6 +156,7 @@
     let lastReportedStatusKey = '';
     let lastShellSyncKey = '';
     let lastReadProgressText = '';
+    let silentAutoConnect = false;
     let mutationObserver = null;
 
     const companionTools = new Map();
@@ -163,7 +164,7 @@
 
     window.thunder68Local?.onHidDiscovery?.(summary => {
       lastDiscovery = summary;
-      if (summary && summary.reason === 'bluetooth-unsupported' && !deviceOpened) {
+      if (summary && summary.reason === 'bluetooth-unsupported' && !deviceOpened && !silentAutoConnect) {
         const info = helpers.classifyConnectionError({discoveryReason: summary.reason});
         renderTroubleshoot(info);
       }
@@ -446,26 +447,35 @@
       verifyWaitTimer = null;
     };
 
-    const connect = () => {
+    const connect = options => {
+      const silent = Boolean(options && options.silent === true);
+      silentAutoConnect = silent;
       feedbackLocked = false;
       const container = root.querySelector('.device-container');
       const target = helpers.findDeviceEntry(container);
       if (!target) {
+        silentAutoConnect = false;
         if (verifyMachine.getState().active) {
           verifyMachine.abort();
           resetVerifyTimers();
         }
         connectButton.disabled = false;
-        feedback('连接入口尚未就绪，请稍后重试。', 'error');
+        if (!silent) feedback('连接入口尚未就绪，请稍后重试。', 'error');
         return false;
       }
-      feedback('正在连接并读取配置…');
+      feedback(silent ? '已检测到键盘，正在自动预读当前配置…' : '正在连接并读取配置…');
       connectButton.disabled = true;
       clearTimeout(connectionTimer);
       connectionTimer = setTimeout(() => {
         // Do not report timeout if the official 2.4G pairing modal is awaiting user action
         if (root.querySelector('.sidebar .modal-overlay')) return;
+        const wasSilent = silentAutoConnect;
+        silentAutoConnect = false;
         connectButton.disabled = false;
+        if (wasSilent) {
+          feedback('连接键盘后读取当前配置');
+          return;
+        }
         const info = helpers.classifyConnectionError({timeout: true, discoveryReason: lastDiscovery?.reason});
         renderTroubleshoot(info);
         feedback(`${info.title}：${info.summary}`, 'error');
@@ -529,24 +539,37 @@
         return;
       }
       if (kind === 'hid-error') {
+        const wasSilent = silentAutoConnect;
+        silentAutoConnect = false;
         clearTimeout(connectionTimer);
         resetVerifyTimers();
-        feedbackLocked = true;
         verifyMachine.abort();
+        connectButton.disabled = false;
         const info = helpers.classifyConnectionError({
           event: e.detail?.event,
           errorName: e.detail?.errorName,
           message: e.detail?.message,
           discoveryReason: lastDiscovery?.reason
         });
+        window.thunder68Local?.diagnostic({event: 'connection-classified', category: info.code, errorName: info.errorName});
+        if (wasSilent) {
+          feedback(info.code === 'device-busy' ? '启动预读已跳过：键盘正被其他驱动占用，关闭后点击「连接键盘」即可' : '连接键盘后读取当前配置');
+          return;
+        }
+        feedbackLocked = true;
         renderTroubleshoot(info);
         feedback(`${info.title}（${info.errorName}）`, 'error');
-        window.thunder68Local?.diagnostic({event: 'connection-classified', category: info.code, errorName: info.errorName});
-        connectButton.disabled = false;
       } else if (kind === 'hid-request-result' && !e.detail.count) {
+        const wasSilent = silentAutoConnect;
+        silentAutoConnect = false;
         clearTimeout(connectionTimer);
         resetVerifyTimers();
         verifyMachine.abort();
+        connectButton.disabled = false;
+        if (wasSilent) {
+          feedback('连接键盘后读取当前配置');
+          return;
+        }
         const info = helpers.classifyConnectionError({
           event: 'hid-request-result',
           count: 0,
@@ -554,7 +577,6 @@
         });
         renderTroubleshoot(info);
         feedback(info.title, 'error');
-        connectButton.disabled = false;
       } else if (kind === 'hid-close') {
         deviceOpened = false;
         ready = false;
@@ -804,6 +826,7 @@
     };
 
     window.addEventListener('thunder68-device-open', () => {
+      silentAutoConnect = false;
       hideHotplugBanner();
       clearTroubleshoot();
       verifyMachine.onDeviceOpened();
@@ -1467,6 +1490,7 @@
       }),
       feedback,
       connect,
+      canPreload: () => !deviceOpened && !root.querySelector('.main-content') && !activeToolId && Boolean(helpers.findDeviceEntry(root.querySelector('.device-container'))),
       triggerVerify: () => verify.click(),
       openDiagnostics,
       setThemeChoice,

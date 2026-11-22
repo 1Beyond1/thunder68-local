@@ -43,6 +43,7 @@ const {
   injectInitialThemeIntoHtml,
   sanitizeWindowBounds,
   shouldTriggerLowBatteryAlert,
+  evaluateSilentAutoConnectPolicy,
   createAsyncDiagnosticLogger
 } = require('./local-core.cjs');
 
@@ -82,6 +83,8 @@ let latestDeviceStatus = {
 let lastDeviceStatusKey = '';
 let lowBatteryNotified = false;
 let quickSwitchCursor = 0;
+let autoPreloadAttempted = false;
+let silentAutoConnectUntil = 0;
 let shortcutStatus = {
   toggleWindow: {accelerator: '', ok: true, error: ''},
   quickSwitchProfile: {accelerator: '', ok: true, error: ''}
@@ -214,10 +217,12 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
       if (win) {
         win.webContents.send('hid-discovery', discovery);
       }
+      const isSilentAuto = Date.now() < silentAutoConnectUntil;
+      silentAutoConnectUntil = 0;
       if (candidates.length === 1) return callback(candidates[0].deviceId);
       if (!candidates.length) {
         callback('');
-        if (backgroundTest) return;
+        if (backgroundTest || isSilentAuto) return;
         const isBt = discovery.reason === 'bluetooth-unsupported';
         await dialog.showMessageBox(activeWindow(), {
           type: 'info',
@@ -229,7 +234,7 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
         });
         return;
       }
-      if (backgroundTest) return callback('');
+      if (backgroundTest || isSilentAuto) return callback('');
       const buttons = [...candidates.map((d, idx) => formatDeviceChoice(d, idx, candidates)), '取消'];
       const result = await dialog.showMessageBox(activeWindow(), {
         type: 'question',
@@ -766,10 +771,52 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
       }
     ]));
 
+    const triggerStartupPreload = async () => {
+      const win = activeWindow();
+      const decision = evaluateSilentAutoConnectPolicy({
+        diagnosing,
+        autoConnectOnLaunch: preferences.autoConnectOnLaunch,
+        alreadyAttempted: autoPreloadAttempted,
+        windowVisible: Boolean(win && win.isVisible()),
+        deviceOpened: latestDeviceStatus.deviceOpened
+      });
+      if (!decision.allow) return;
+      autoPreloadAttempted = true;
+      try {
+        for (let attempt = 0; attempt < 25; attempt++) {
+          const current = activeWindow();
+          if (!current) return;
+          const canRun = await current.webContents.executeJavaScript(
+            'Boolean(window.thunder68Shell && window.thunder68Shell.canPreload && window.thunder68Shell.canPreload())'
+          );
+          if (canRun) {
+            if (!preferences.autoConnectOnLaunch || latestDeviceStatus.deviceOpened) return;
+            silentAutoConnectUntil = Date.now() + 5000;
+            log({event: 'auto-preload-start'});
+            const started = await current.webContents.executeJavaScript(
+              'Boolean(window.thunder68Shell && window.thunder68Shell.connect({silent: true}))',
+              true
+            );
+            if (!started) silentAutoConnectUntil = 0;
+            return;
+          }
+          await new Promise(resolve => setTimeout(resolve, 120));
+        }
+      } catch (error) {
+        silentAutoConnectUntil = 0;
+        log({event: 'auto-preload-error', message: error?.message || String(error)});
+      }
+    };
+
     await mainWindow.loadURL(LOCAL_ORIGIN + '/thunder68/');
     if (!diagnosing && !startMinimized) {
       if (restoredBounds.maximized) mainWindow.maximize();
       mainWindow.show();
+      triggerStartupPreload();
+    } else if (!diagnosing && startMinimized) {
+      mainWindow.once('show', () => {
+        triggerStartupPreload();
+      });
     }
 
     if (diagnosing) {

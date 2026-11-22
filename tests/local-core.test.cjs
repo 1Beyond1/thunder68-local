@@ -29,6 +29,7 @@ const {
   injectInitialThemeIntoHtml,
   sanitizeWindowBounds,
   shouldTriggerLowBatteryAlert,
+  evaluateSilentAutoConnectPolicy,
   createAsyncDiagnosticLogger
 } = require('../app/local-core.cjs');
 
@@ -311,4 +312,35 @@ test('createAsyncDiagnosticLogger batches async writes, rotates oversized files,
   } finally {
     fs.rmSync(tmp, {recursive: true, force: true});
   }
+});
+
+test('autoConnectOnLaunch defaults to true and evaluateSilentAutoConnectPolicy enforces launch guardrails', () => {
+  const defaults = normalizePreferences({});
+  assert.equal(defaults.autoConnectOnLaunch, true);
+  assert.equal(mergePreferences(defaults, {autoConnectOnLaunch: false}).autoConnectOnLaunch, false);
+
+  assert.deepEqual(
+    evaluateSilentAutoConnectPolicy({diagnosing: false, autoConnectOnLaunch: true, alreadyAttempted: false, windowVisible: true, deviceOpened: false}),
+    {allow: true, reason: 'ready'}
+  );
+  assert.deepEqual(
+    evaluateSilentAutoConnectPolicy({diagnosing: true, autoConnectOnLaunch: true, alreadyAttempted: false, windowVisible: true, deviceOpened: false}),
+    {allow: false, reason: 'diagnosing'}
+  );
+  assert.deepEqual(
+    evaluateSilentAutoConnectPolicy({diagnosing: false, autoConnectOnLaunch: false, alreadyAttempted: false, windowVisible: true, deviceOpened: false}),
+    {allow: false, reason: 'disabled'}
+  );
+  assert.deepEqual(
+    evaluateSilentAutoConnectPolicy({diagnosing: false, autoConnectOnLaunch: true, alreadyAttempted: true, windowVisible: true, deviceOpened: false}),
+    {allow: false, reason: 'already-attempted'}
+  );
+  assert.deepEqual(
+    evaluateSilentAutoConnectPolicy({diagnosing: false, autoConnectOnLaunch: true, alreadyAttempted: false, windowVisible: false, deviceOpened: false}),
+    {allow: false, reason: 'window-hidden'}
+  );
+  assert.deepEqual(
+    evaluateSilentAutoConnectPolicy({diagnosing: false, autoConnectOnLaunch: true, alreadyAttempted: false, windowVisible: true, deviceOpened: true}),
+    {allow: false, reason: 'already-opened'}
+  );
 });
