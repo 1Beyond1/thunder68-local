@@ -624,6 +624,101 @@
     };
   }
 
+  function createSyncScheduler(options = {}) {
+    const run = typeof options.run === 'function' ? options.run : () => {};
+    const isBusy = typeof options.isBusy === 'function' ? options.isBusy : () => false;
+    const busyIntervalMs = typeof options.busyIntervalMs === 'number' && options.busyIntervalMs >= 0 ? options.busyIntervalMs : 140;
+    const raf = options.raf || (typeof requestAnimationFrame === 'function' ? fn => requestAnimationFrame(fn) : fn => setTimeout(fn, 16));
+    const cancelRaf = options.cancelRaf || (typeof cancelAnimationFrame === 'function' ? id => cancelAnimationFrame(id) : id => clearTimeout(id));
+    const setTimer = options.setTimeoutFn || setTimeout;
+    const clearTimer = options.clearTimeoutFn || clearTimeout;
+    const nowFn = options.now || (() => Date.now());
+
+    let rafId = null;
+    let timerId = null;
+    let lastRunAt = 0;
+    let lastBusy = false;
+
+    function execute() {
+      rafId = null;
+      lastRunAt = nowFn();
+      lastBusy = Boolean(isBusy());
+      run();
+    }
+
+    function enqueueRaf() {
+      if (rafId !== null) return;
+      rafId = raf(execute);
+    }
+
+    return {
+      schedule(opts = {}) {
+        const immediate = Boolean(opts && opts.immediate);
+        const busy = Boolean(isBusy());
+        const exitedBusy = lastBusy && !busy;
+        lastBusy = busy;
+
+        if (immediate || !busy || exitedBusy) {
+          if (timerId !== null) {
+            clearTimer(timerId);
+            timerId = null;
+          }
+          enqueueRaf();
+          return;
+        }
+
+        const elapsed = lastRunAt > 0 ? nowFn() - lastRunAt : busyIntervalMs;
+        if (elapsed >= busyIntervalMs) {
+          if (timerId !== null) {
+            clearTimer(timerId);
+            timerId = null;
+          }
+          enqueueRaf();
+          return;
+        }
+
+        if (rafId !== null || timerId !== null) return;
+        const remaining = Math.max(16, busyIntervalMs - elapsed);
+        timerId = setTimer(() => {
+          timerId = null;
+          enqueueRaf();
+        }, remaining);
+      },
+      flush() {
+        if (timerId !== null) {
+          clearTimer(timerId);
+          timerId = null;
+        }
+        if (rafId !== null) {
+          cancelRaf(rafId);
+          rafId = null;
+        }
+        execute();
+      },
+      cancel() {
+        if (timerId !== null) {
+          clearTimer(timerId);
+          timerId = null;
+        }
+        if (rafId !== null) {
+          cancelRaf(rafId);
+          rafId = null;
+        }
+      }
+    };
+  }
+
+  function formatReadProgressText({receivedFrames = 0, readStartFrames = 0, keyCount = 0} = {}) {
+    const delta = Math.max(0, Number(receivedFrames || 0) - Number(readStartFrames || 0));
+    if (delta > 0) {
+      return `正在读取键盘配置…（已同步 ${delta} 帧，硬件逐包读取约需 2–3 秒）`;
+    }
+    if (keyCount > 0 && keyCount < 68) {
+      return `正在读取键盘配置…（${keyCount}/68 键）`;
+    }
+    return '正在读取键盘配置，请稍等…';
+  }
+
   return {
     I18N_LABELS,
     normalizeLabel,
@@ -646,6 +741,8 @@
     getTravelBadgePalette,
     formatSanitizedRendererReport,
     createHidFeedbackController,
-    createVerifyStateMachine
+    createVerifyStateMachine,
+    createSyncScheduler,
+    formatReadProgressText
   };
 });

@@ -132,7 +132,9 @@
     const companionNavList = shell.querySelector('.local-companion-nav-list');
     const companionStage = shell.querySelector('.local-companion-stage');
 
-    const verifyMachine = helpers.createVerifyStateMachine({settleMs: 700});
+    const SETTLE_MS = 350;
+    const SETTLE_TIMER_MS = 380;
+    const verifyMachine = helpers.createVerifyStateMachine({settleMs: SETTLE_MS});
     let connectionTimer;
     let verifyWaitTimer;
     let lastConfiguration = null;
@@ -146,6 +148,15 @@
     let lastDiscovery = null;
     let lastDiagReportText = '';
     let latestDeviceInfo = {productId: null, isWireless: false, isWired: false, modeLabel: 'USB / 2.4G', battery: null, officialVersion: ''};
+    let domDirty = true;
+    let isClassifying = false;
+    let wasConnectedPage = false;
+    let wasBusy = false;
+    let readStartFrames = 0;
+    let lastReportedStatusKey = '';
+    let lastShellSyncKey = '';
+    let lastReadProgressText = '';
+    let mutationObserver = null;
 
     const companionTools = new Map();
     let activeToolId = null;
@@ -551,6 +562,7 @@
         synchronize();
       } else if (kind === 'hid-input') {
         verifyMachine.onFreshHidActivity();
+        if (wasBusy) syncScheduler.schedule();
       } else if (kind === 'hid-output' && ready && !verifyMachine.getState().active && !feedbackLocked && Date.now() - lastEditAt < 3000) {
         feedback('设置已发送 · 重新读取可核对设备当前值');
       }
@@ -979,12 +991,48 @@
       }
     });
 
+    function updateRangeProgress(input) {
+      if (!input || input.tagName !== 'INPUT' || input.type !== 'range') return;
+      const span = Number(input.max || 100) - Number(input.min || 0);
+      const percent = span ? ((Number(input.value) - Number(input.min || 0)) / span) * 100 : 0;
+      const progress = Math.max(0, Math.min(100, percent)) + '%';
+      if (input.style.getPropertyValue('--local-range-progress') !== progress) {
+        input.style.setProperty('--local-range-progress', progress);
+      }
+    }
+
+    root.addEventListener('input', e => {
+      if (e.target?.tagName === 'INPUT' && e.target.type === 'range') {
+        isClassifying = true;
+        try {
+          updateRangeProgress(e.target);
+        } finally {
+          mutationObserver?.takeRecords();
+          isClassifying = false;
+        }
+      }
+    }, true);
+
+    const syncScheduler = helpers.createSyncScheduler({
+      run: () => synchronize(),
+      isBusy: () => Boolean(window.thunder68Presentation?.state()?.config?.mask),
+      busyIntervalMs: 140
+    });
+
     function synchronize() {
       const main = root.querySelector('.main-content');
       const connectedPage = !!main;
       const state = window.thunder68Presentation?.state();
       const sidebarEl = root.querySelector('.sidebar');
       const modalVisible = !!root.querySelector('.sidebar .modal-overlay');
+      const busyNow = Boolean(state?.config?.mask);
+      const reading = helpers.isReadingConfig(state?.config ? '' : root.textContent, state);
+      const pageSwitched = connectedPage !== wasConnectedPage;
+      const busyEnded = wasBusy && !busyNow;
+      if (!wasBusy && (busyNow || reading)) {
+        readStartFrames = window.thunder68DesktopDiag?.stats?.().received || 0;
+        lastReadProgressText = '';
+      }
 
       document.body.classList.toggle('local-config', connectedPage);
       document.body.classList.toggle('local-home', !connectedPage);
@@ -995,7 +1043,25 @@
         connectButton.disabled = false;
       }
 
-      for (const node of root.querySelectorAll('[style]')) classify(node);
+      // Skip redundant full-DOM [style] scans when vendor DOM did not change or during mid-readback packet storms.
+      if ((domDirty || pageSwitched || busyEnded) && (!busyNow || pageSwitched || !wasBusy)) {
+        isClassifying = true;
+        try {
+          for (const node of root.querySelectorAll('[style]')) classify(node);
+        } finally {
+          mutationObserver?.takeRecords();
+          isClassifying = false;
+          domDirty = false;
+        }
+      } else if (!busyNow && connectedPage) {
+        isClassifying = true;
+        try {
+          for (const range of root.querySelectorAll('input[type="range"]')) updateRangeProgress(range);
+        } finally {
+          mutationObserver?.takeRecords();
+          isClassifying = false;
+        }
+      }
       shell.querySelector('.local-device-link').classList.toggle('is-active', !connectedPage && !activeToolId);
 
       // Update sidebar-derived device info (2.4G mode, battery, official build version)
@@ -1004,20 +1070,21 @@
       const railMode = shell.querySelector('.local-rail-mode');
       if (railMode) {
         const batText = deviceInfo.battery !== null ? ` · 电量 ${deviceInfo.battery}%` : '';
-        railMode.textContent = `磁轴键盘 · ${deviceInfo.modeLabel}${batText}`;
+        const modeText = `磁轴键盘 · ${deviceInfo.modeLabel}${batText}`;
+        if (railMode.textContent !== modeText) railMode.textContent = modeText;
       }
       const railVersion = shell.querySelector('.local-rail-version');
       if (railVersion) {
         railVersion.hidden = !deviceInfo.officialVersion;
-        if (deviceInfo.officialVersion) railVersion.textContent = `内核 ${deviceInfo.officialVersion}`;
+        if (deviceInfo.officialVersion && railVersion.textContent !== `内核 ${deviceInfo.officialVersion}`) {
+          railVersion.textContent = `内核 ${deviceInfo.officialVersion}`;
+        }
       }
-
-      const reading = helpers.isReadingConfig(root.textContent, state);
 
       if (main) {
         if (!storeSubscribed && state) {
           storeSubscribed = true;
-          window.thunder68Presentation.subscribe(() => requestAnimationFrame(synchronize));
+          window.thunder68Presentation.subscribe(() => syncScheduler.schedule());
         }
 
         const tabbar = helpers.findTabbarInMain(main);
@@ -1127,62 +1194,70 @@
         document.body.classList.toggle('local-busy', busy);
 
         const now = Date.now();
-        const signature = configuration(state?.config);
         const keyCount = state?.config?.keyValues?.length || 0;
         const vState = verifyMachine.getState();
+        const receivedFrames = window.thunder68DesktopDiag?.stats?.().received || 0;
 
-        if (vState.active) {
-          if (verifyMachine.observeConfig(signature, now)) {
-            clearTimeout(settleTimer);
-            settleTimer = setTimeout(synchronize, 750);
+        if (busy || reading) {
+          const progressText = helpers.formatReadProgressText({receivedFrames, readStartFrames, keyCount});
+          if (progressText !== lastReadProgressText && (!feedbackLocked || vState.active)) {
+            lastReadProgressText = progressText;
+            feedback(progressText);
           }
-          const result = verifyMachine.evaluate({connectedPage, deviceOpened, busy, reading, keyCount, now});
-          if (result.done) {
-            clearTimeout(connectionTimer);
-            resetVerifyTimers();
-            connectButton.disabled = false;
-            ready = true;
-            lastConfiguration = result.signature;
-            observedSignature = result.signature;
-            stableAt = now;
-            feedback(
-              result.matched
-                ? '已重新读取 · 配置与界面一致'
-                : '已重新读取 · 设备返回值与刚才不同，请检查当前参数',
-              result.matched ? 'success' : 'error'
-            );
-            feedbackLocked = true;
-          }
+          if (busy) lastBusy = true;
         } else {
-          if (signature !== observedSignature) {
-            observedSignature = signature;
-            stableAt = now;
-            clearTimeout(settleTimer);
-            settleTimer = setTimeout(synchronize, 750);
-          }
-          const loaded = keyCount === 68 && !reading && stableAt > 0 && now - stableAt >= 700;
-          if (deviceOpened && !busy && loaded) {
-            clearTimeout(connectionTimer);
-            connectButton.disabled = false;
-            if (!ready) {
-              ready = true;
-              if (!feedbackLocked) feedback('已读取键盘当前配置 · 修改后可重新读取核对', 'success');
-            } else if (lastConfiguration && signature !== lastConfiguration && Date.now() - lastEditAt < 3000) {
-              feedbackLocked = false;
-              feedback('当前设置已更新 · 设备结果待重新读取核对');
-            } else if (lastBusy && !feedbackLocked) {
-              feedback(Date.now() - lastEditAt < 3000 ? '操作已完成 · 重新读取可核对当前值' : '当前配置已就绪', 'success');
+          lastReadProgressText = '';
+          const signature = configuration(state?.config);
+          if (vState.active) {
+            if (verifyMachine.observeConfig(signature, now)) {
+              clearTimeout(settleTimer);
+              settleTimer = setTimeout(() => syncScheduler.schedule({immediate: true}), SETTLE_TIMER_MS);
             }
-            lastConfiguration = signature;
-          } else if (busy && !lastBusy) {
-            feedback('正在处理，请等待…');
+            const result = verifyMachine.evaluate({connectedPage, deviceOpened, busy, reading, keyCount, now});
+            if (result.done) {
+              clearTimeout(connectionTimer);
+              resetVerifyTimers();
+              connectButton.disabled = false;
+              ready = true;
+              lastConfiguration = result.signature;
+              observedSignature = result.signature;
+              stableAt = now;
+              feedback(
+                result.matched
+                  ? '已重新读取 · 配置与界面一致'
+                  : '已重新读取 · 设备返回值与刚才不同，请检查当前参数',
+                result.matched ? 'success' : 'error'
+              );
+              feedbackLocked = true;
+            }
+          } else {
+            if (signature !== observedSignature) {
+              observedSignature = signature;
+              stableAt = now;
+              clearTimeout(settleTimer);
+              settleTimer = setTimeout(() => syncScheduler.schedule({immediate: true}), SETTLE_TIMER_MS);
+            }
+            const loaded = keyCount === 68 && !reading && stableAt > 0 && now - stableAt >= SETTLE_MS;
+            if (deviceOpened && !busy && loaded) {
+              clearTimeout(connectionTimer);
+              connectButton.disabled = false;
+              if (!ready) {
+                ready = true;
+                if (!feedbackLocked) feedback('已读取键盘当前配置 · 修改后可重新读取核对', 'success');
+              } else if (lastConfiguration && signature !== lastConfiguration && Date.now() - lastEditAt < 3000) {
+                feedbackLocked = false;
+                feedback('当前设置已更新 · 设备结果待重新读取核对');
+              } else if (lastBusy && !feedbackLocked) {
+                feedback(Date.now() - lastEditAt < 3000 ? '操作已完成 · 重新读取可核对当前值' : '当前配置已就绪', 'success');
+              }
+              lastConfiguration = signature;
+            }
+            if (!busy && loaded) lastBusy = false;
           }
-          if (!busy && loaded) lastBusy = false;
-          else if (busy) lastBusy = true;
         }
 
         const isVerifying = verifyMachine.getState().active;
-        const loadedForActions = keyCount === 68 && !reading && stableAt > 0 && now - stableAt >= 700;
+        const loadedForActions = !busy && keyCount === 68 && !reading && stableAt > 0 && now - stableAt >= SETTLE_MS;
         verify.hidden = !deviceOpened;
         verify.disabled = busy || isVerifying || !loadedForActions;
 
@@ -1250,7 +1325,10 @@
             button.disabled = !selection.length || busy || !deviceOpened;
           }
         }
-        updateOverlays();
+        // Defer layout measurements & 200+ SVG badge rebuilds while config readback is streaming packets.
+        if (!busyNow || pageSwitched || !wasBusy) {
+          updateOverlays();
+        }
       } else {
         ready = false;
         lastConfiguration = null;
@@ -1302,43 +1380,56 @@
       const isEffectivelyConnected = connectedPage && deviceOpened && !reading;
       status.classList.toggle('is-connected', isEffectivelyConnected);
       const batBadge = deviceInfo.battery !== null ? ` · ${deviceInfo.battery}%` : '';
-      status.querySelector('span').textContent = modalVisible
+      const receivedDelta = Math.max(0, (window.thunder68DesktopDiag?.stats?.().received || 0) - readStartFrames);
+      const readingBadge = receivedDelta > 0 ? `正在读取配置 · ${receivedDelta} 帧` : '正在读取配置';
+      const nextStatusText = modalVisible
         ? '等待无线配对/确认'
         : connectedPage
-          ? (reading ? '正在读取配置' : deviceOpened ? `${deviceInfo.modeLabel} 已连接${batBadge}` : '设备已断开')
+          ? ((reading || busyNow) ? readingBadge : deviceOpened ? `${deviceInfo.modeLabel} 已连接${batBadge}` : '设备已断开')
           : '等待连接';
+      const statusSpan = status.querySelector('span');
+      if (statusSpan.textContent !== nextStatusText) statusSpan.textContent = nextStatusText;
 
-      window.thunder68Local?.reportDeviceStatus?.({
+      const deviceStatusPayload = {
         connected: isEffectivelyConnected,
         deviceOpened,
         reading,
-        busy: !!state?.config?.mask,
+        busy: busyNow,
         modeLabel: deviceInfo.modeLabel,
         isWireless: Boolean(deviceInfo.isWireless),
         battery: deviceInfo.battery
-      });
-      window.dispatchEvent(new CustomEvent('thunder68-shell-sync', {
-        detail: {
-          connectedPage,
-          deviceOpened,
-          ready,
-          reading,
-          busy: !!state?.config?.mask,
-          activeToolId,
-          deviceInfo
-        }
-      }));
+      };
+      const deviceStatusKey = JSON.stringify(deviceStatusPayload);
+      if (deviceStatusKey !== lastReportedStatusKey) {
+        lastReportedStatusKey = deviceStatusKey;
+        window.thunder68Local?.reportDeviceStatus?.(deviceStatusPayload);
+      }
+
+      const shellSyncDetail = {
+        connectedPage,
+        deviceOpened,
+        ready,
+        reading,
+        busy: busyNow,
+        activeToolId,
+        deviceInfo
+      };
+      const shellSyncKey = JSON.stringify(shellSyncDetail);
+      if (shellSyncKey !== lastShellSyncKey) {
+        lastShellSyncKey = shellSyncKey;
+        window.dispatchEvent(new CustomEvent('thunder68-shell-sync', {detail: shellSyncDetail}));
+      }
+
+      wasConnectedPage = connectedPage;
+      wasBusy = busyNow;
     }
 
-    let pending = false;
-    new MutationObserver(() => {
-      if (pending) return;
-      pending = true;
-      requestAnimationFrame(() => {
-        pending = false;
-        synchronize();
-      });
-    }).observe(root, {childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class']});
+    mutationObserver = new MutationObserver(() => {
+      if (isClassifying) return;
+      domDirty = true;
+      syncScheduler.schedule();
+    });
+    mutationObserver.observe(root, {childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class']});
 
     navigator.hid?.addEventListener('connect', event => {
       const device = event?.device;

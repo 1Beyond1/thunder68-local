@@ -355,3 +355,77 @@ test('isSupportedHotplugDevice and getTravelBadgePalette validate hotplug device
   assert.notEqual(darkPalette.travel, lightPalette.travel);
   assert.match(darkPalette.bg, /17,\s*18,\s*20/);
 });
+
+test('createSyncScheduler coalesces frame bursts, throttles during busy readback, and snaps on exit', () => {
+  let now = 1000;
+  let busy = false;
+  let runs = 0;
+  let seq = 1;
+  const rafQueue = [];
+  const timers = [];
+
+  const scheduler = helpers.createSyncScheduler({
+    run: () => { runs++; },
+    isBusy: () => busy,
+    busyIntervalMs: 140,
+    now: () => now,
+    raf: fn => {
+      const id = seq++;
+      rafQueue.push({id, fn, active: true});
+      return id;
+    },
+    cancelRaf: id => {
+      const item = rafQueue.find(entry => entry.id === id);
+      if (item) item.active = false;
+    },
+    setTimeoutFn: (fn, delay) => {
+      const id = seq++;
+      timers.push({id, fn, delay, active: true});
+      return id;
+    },
+    clearTimeoutFn: id => {
+      const item = timers.find(entry => entry.id === id);
+      if (item) item.active = false;
+    }
+  });
+
+  // 10 rapid triggers in one frame coalesce into a single rAF run
+  for (let i = 0; i < 10; i++) scheduler.schedule();
+  assert.equal(rafQueue.filter(entry => entry.active).length, 1);
+  rafQueue.shift().fn();
+  assert.equal(runs, 1);
+
+  // Enter busy readback: packet burst within 140ms schedules a single throttled timer instead of flooding rAF
+  busy = true;
+  now = 1020;
+  for (let i = 0; i < 20; i++) scheduler.schedule();
+  assert.equal(rafQueue.filter(entry => entry.active).length, 0);
+  assert.equal(timers.filter(entry => entry.active).length, 1);
+
+  // When throttle timer fires, it enqueues 1 rAF run
+  now = 1150;
+  const activeTimer = timers.find(entry => entry.active);
+  activeTimer.active = false;
+  activeTimer.fn();
+  assert.equal(rafQueue.filter(entry => entry.active).length, 1);
+  rafQueue.pop().fn();
+  assert.equal(runs, 2);
+
+  // Another busy burst queues timer, then busy ends -> immediately cancels timer and runs on next rAF
+  now = 1170;
+  scheduler.schedule();
+  assert.equal(timers.filter(entry => entry.active).length, 1);
+  busy = false;
+  now = 1185;
+  scheduler.schedule();
+  assert.equal(timers.filter(entry => entry.active).length, 0);
+  assert.equal(rafQueue.filter(entry => entry.active).length, 1);
+  rafQueue.pop().fn();
+  assert.equal(runs, 3);
+});
+
+test('formatReadProgressText reports live HID frame progress cleanly', () => {
+  assert.match(helpers.formatReadProgressText({receivedFrames: 42, readStartFrames: 10, keyCount: 68}), /已同步 32 帧/);
+  assert.match(helpers.formatReadProgressText({receivedFrames: 0, readStartFrames: 0, keyCount: 24}), /24\/68 键/);
+  assert.match(helpers.formatReadProgressText({receivedFrames: 5, readStartFrames: 5, keyCount: 0}), /正在读取键盘配置/);
+});

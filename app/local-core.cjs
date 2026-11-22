@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const fsp = require('node:fs/promises');
 const path = require('node:path');
 const profileCore = require('./profile-core.js');
 
@@ -518,6 +519,98 @@ function shouldTriggerLowBatteryAlert({enabled, threshold = 20, isWireless, batt
   return {notify: false, nextNotified: alreadyNotified};
 }
 
+function createAsyncDiagnosticLogger({getLogFile, maxBytes = 2 * 1024 * 1024, flushDelayMs = 40} = {}) {
+  const resolvePath = typeof getLogFile === 'function' ? getLogFile : () => String(getLogFile || '');
+  let queue = [];
+  let timer = null;
+  let ensuredDir = '';
+  let writeChain = Promise.resolve();
+
+  async function drain() {
+    if (!queue.length) return;
+    const file = resolvePath();
+    if (!file) {
+      queue = [];
+      return;
+    }
+    const batch = queue.join('');
+    queue = [];
+    try {
+      const dir = path.dirname(file);
+      if (ensuredDir !== dir) {
+        await fsp.mkdir(dir, {recursive: true});
+        ensuredDir = dir;
+      }
+      try {
+        const stat = await fsp.stat(file);
+        if (stat.size > maxBytes) {
+          await fsp.rename(file, file + '.previous');
+        }
+      } catch {
+        // File does not exist yet
+      }
+      await fsp.appendFile(file, batch, 'utf8');
+    } catch {
+      // Ignore diagnostic I/O failures so logging never crashes the driver.
+    }
+  }
+
+  function scheduleDrain() {
+    if (timer !== null) return;
+    timer = setTimeout(() => {
+      timer = null;
+      writeChain = writeChain.then(drain, drain);
+    }, flushDelayMs);
+    if (typeof timer.unref === 'function') timer.unref();
+  }
+
+  return {
+    log(event) {
+      try {
+        queue.push(JSON.stringify({time: new Date().toISOString(), ...event}) + '\n');
+        scheduleDrain();
+      } catch {
+        // Ignore non-serializable events
+      }
+    },
+    flush() {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      writeChain = writeChain.then(drain, drain);
+      return writeChain;
+    },
+    flushSync() {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (!queue.length) return;
+      const file = resolvePath();
+      if (!file) {
+        queue = [];
+        return;
+      }
+      const batch = queue.join('');
+      queue = [];
+      try {
+        const dir = path.dirname(file);
+        if (ensuredDir !== dir) {
+          fs.mkdirSync(dir, {recursive: true});
+          ensuredDir = dir;
+        }
+        if (fs.existsSync(file) && fs.statSync(file).size > maxBytes) {
+          fs.renameSync(file, file + '.previous');
+        }
+        fs.appendFileSync(file, batch, 'utf8');
+      } catch {
+        // Ignore diagnostic I/O failures on exit.
+      }
+    }
+  };
+}
+
 module.exports = {
   LOCAL_ORIGIN,
   SUPPORTED_VENDOR_ID,
@@ -558,5 +651,6 @@ module.exports = {
   getThemeWindowChrome,
   injectInitialThemeIntoHtml,
   sanitizeWindowBounds,
-  shouldTriggerLowBatteryAlert
+  shouldTriggerLowBatteryAlert,
+  createAsyncDiagnosticLogger
 };

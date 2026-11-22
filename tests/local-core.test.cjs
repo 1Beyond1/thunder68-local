@@ -28,7 +28,8 @@ const {
   getThemeWindowChrome,
   injectInitialThemeIntoHtml,
   sanitizeWindowBounds,
-  shouldTriggerLowBatteryAlert
+  shouldTriggerLowBatteryAlert,
+  createAsyncDiagnosticLogger
 } = require('../app/local-core.cjs');
 
 const root = path.resolve(__dirname, '../app/vendor');
@@ -278,4 +279,36 @@ test('shouldTriggerLowBatteryAlert applies hysteresis and only triggers for 2.4G
   // Recharged >= threshold + 5 resets state
   const charged = shouldTriggerLowBatteryAlert({enabled: true, threshold: 20, isWireless: true, battery: 30, alreadyNotified: true});
   assert.deepEqual(charged, {notify: false, nextNotified: false});
+});
+
+test('createAsyncDiagnosticLogger batches async writes, rotates oversized files, and supports flushSync', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 't68-async-log-'));
+  try {
+    const file = path.join(tmp, 'logs', 'diagnostics.jsonl');
+    const logger = createAsyncDiagnosticLogger({
+      getLogFile: () => file,
+      maxBytes: 220,
+      flushDelayMs: 15
+    });
+
+    logger.log({event: 'hid-input', count: 1});
+    logger.log({event: 'hid-input', count: 2});
+    logger.log({event: 'hid-input', count: 3});
+    await logger.flush();
+
+    const lines1 = fs.readFileSync(file, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+    assert.equal(lines1.length, 3);
+    assert.equal(lines1[2].count, 3);
+
+    for (let i = 0; i < 6; i++) logger.log({event: 'hid-output', count: i, message: 'payload-padding-0123456789'});
+    await logger.flush();
+    logger.log({event: 'after-rotate', count: 99});
+    logger.flushSync();
+
+    assert.equal(fs.existsSync(file + '.previous'), true);
+    const lines2 = fs.readFileSync(file, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+    assert.equal(lines2[lines2.length - 1].event, 'after-rotate');
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
 });

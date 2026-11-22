@@ -42,7 +42,8 @@ const {
   getThemeWindowChrome,
   injectInitialThemeIntoHtml,
   sanitizeWindowBounds,
-  shouldTriggerLowBatteryAlert
+  shouldTriggerLowBatteryAlert,
+  createAsyncDiagnosticLogger
 } = require('./local-core.cjs');
 
 protocol.registerSchemesAsPrivileged([{
@@ -106,16 +107,14 @@ function readRecentSanitizedLogs(limit = 60) {
   }
 }
 
+const diagnosticLogger = createAsyncDiagnosticLogger({
+  getLogFile: () => logFile,
+  maxBytes: 2 * 1024 * 1024,
+  flushDelayMs: 40
+});
+
 function log(event) {
-  try {
-    fs.mkdirSync(path.dirname(logFile), {recursive: true});
-    if (fs.existsSync(logFile) && fs.statSync(logFile).size > 2 * 1024 * 1024) {
-      fs.renameSync(logFile, logFile + '.previous');
-    }
-    fs.appendFileSync(logFile, JSON.stringify({time: new Date().toISOString(), ...event}) + '\n');
-  } catch {
-    // Ignore diagnostic I/O failures so logging never crashes the driver.
-  }
+  diagnosticLogger.log(event);
 }
 
 function activeWindow() {
@@ -167,6 +166,7 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
   });
 
   app.on('will-quit', () => {
+    diagnosticLogger.flushSync();
     try { globalShortcut.unregisterAll(); } catch {}
     if (tray && !tray.isDestroyed()) {
       tray.destroy();
@@ -539,9 +539,10 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
       if (safe) log(safe);
     });
 
-    ipcMain.handle('diagnostics:read', event => {
+    ipcMain.handle('diagnostics:read', async event => {
       const win = activeWindow();
       if (!win || event.sender !== win.webContents) return null;
+      await diagnosticLogger.flush();
       return {
         meta: {
           appVersion: app.getVersion(),
@@ -776,6 +777,7 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
     }
   }).catch(error => {
     log({event: 'fatal-error', message: error?.stack || String(error)});
+    diagnosticLogger.flushSync();
     if (!diagnosing) dialog.showErrorBox('本地驱动启动失败', error?.message || String(error));
     app.exit(1);
   });
