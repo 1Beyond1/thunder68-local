@@ -2,6 +2,7 @@ node_modules/
 release/
 data/
 output/
+.tmp/
 NVIDIA Corporation/
 research/decoded.js
 research/official-main.js
