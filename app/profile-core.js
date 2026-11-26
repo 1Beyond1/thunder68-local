@@ -12,6 +12,33 @@
   const MIN_TRAVEL_MM = 0.01;
   const MAX_TRAVEL_MM = 4.0;
   const PROFILE_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
+  const HEX_UID_RE = /^[0-9a-fA-F]{2}(?:\s+[0-9a-fA-F]{2})+$/;
+  const BINARY_BYTE_RE = /^[01]{8}$/;
+
+  // Official DAREU Thunder68 68-key layout ID whitelist (15 + 15 + 14 + 14 + 10 = 68).
+  const OFFICIAL_THUNDER68_KEY_IDS = Object.freeze([
+    'Esc', '!1', '@2', '#3', '$4', '%5', '^6', '&7', '*8', '(9', ')0', '_-', '+=', 'Backspace', 'Insert',
+    'Tab', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{[', '}]', '|\\', 'Del',
+    'Caps Lock', 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':;', '"\'', 'Enter', 'PgUp',
+    'ShiftL', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<,', '>.', '?/', 'ShiftR', 'Arrowup', 'PgDn',
+    'CtrlL', 'WinL', 'AltL', 'Spacebar', 'AltR', 'Fn', 'CtrlR', 'ArrowL', 'ArrowD', 'ArrowR'
+  ]);
+  const OFFICIAL_THUNDER68_KEY_ID_SET = new Set(OFFICIAL_THUNDER68_KEY_IDS);
+
+  function isPlainObject(value) {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  function coerceStrictNumber(value) {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return NaN;
+      const num = Number(trimmed);
+      return Number.isFinite(num) ? num : NaN;
+    }
+    return NaN;
+  }
 
   const VOLATILE_CONFIG_KEYS = Object.freeze([
     'mask',
@@ -142,7 +169,7 @@
       copy.triggerMode = {triggerIndex: 0};
     }
 
-    if (!copy.lightness || typeof copy.lightness !== 'object') {
+    if (!isPlainObject(copy.lightness)) {
       copy.lightness = {
         effectId: 9,
         speed: 50,
@@ -157,13 +184,59 @@
         frontHexColor: '#ffffff',
         mappingData: {}
       };
+    } else {
+      for (const field of ['effectId', 'brightness', 'speed']) {
+        copy.lightness[field] = coerceStrictNumber(copy.lightness[field]);
+      }
+      for (const field of ['frontEffectId', 'frontBrightness', 'frontSpeed']) {
+        if (copy.lightness[field] !== undefined && copy.lightness[field] !== null && copy.lightness[field] !== '') {
+          copy.lightness[field] = coerceStrictNumber(copy.lightness[field]);
+        }
+      }
+    }
+
+    if (isPlainObject(copy.settings)) {
+      for (const field of ['rate', 'sleeptime']) {
+        if (copy.settings[field] !== undefined && copy.settings[field] !== null && copy.settings[field] !== '') {
+          const num = coerceStrictNumber(copy.settings[field]);
+          if (Number.isFinite(num)) copy.settings[field] = num;
+        }
+      }
+    }
+
+    if (isPlainObject(copy.triggerMode) && copy.triggerMode.triggerIndex !== undefined && copy.triggerMode.triggerIndex !== null) {
+      const idx = coerceStrictNumber(copy.triggerMode.triggerIndex);
+      if (Number.isFinite(idx)) copy.triggerMode.triggerIndex = idx;
     }
 
     const baseSuper = createDefaultSuperkeys();
     copy.superkeys = {
       ...baseSuper,
-      ...(copy.superkeys && typeof copy.superkeys === 'object' ? copy.superkeys : {})
+      ...(isPlainObject(copy.superkeys) ? copy.superkeys : {})
     };
+    if (Array.isArray(copy.superkeys.mtKeys)) {
+      copy.superkeys.mtKeys = copy.superkeys.mtKeys.map(item => (
+        isPlainObject(item) && item.sliderValue !== undefined
+          ? {...item, sliderValue: coerceStrictNumber(item.sliderValue)}
+          : item
+      ));
+    }
+    if (Array.isArray(copy.superkeys.socdKeys)) {
+      copy.superkeys.socdKeys = copy.superkeys.socdKeys.map(item => {
+        if (!isPlainObject(item)) return item;
+        const next = {...item};
+        if (next.behaviorMode !== undefined) next.behaviorMode = coerceStrictNumber(next.behaviorMode);
+        if (next.socdTravelValue !== undefined) next.socdTravelValue = coerceStrictNumber(next.socdTravelValue);
+        return next;
+      });
+    }
+    if (Array.isArray(copy.superkeys.mptKeys)) {
+      copy.superkeys.mptKeys = copy.superkeys.mptKeys.map(item => (
+        isPlainObject(item) && Array.isArray(item.mptDis)
+          ? {...item, mptDis: item.mptDis.map(coerceStrictNumber)}
+          : item
+      ));
+    }
 
     if (!copy.macroMap || typeof copy.macroMap !== 'object') {
       copy.macroMap = {selectIndex: 0, defaultMacros: createDefaultMacros()};
@@ -217,12 +290,21 @@
     return copy;
   }
 
-  function validateProfileConfig(config) {
+  function validateProfileConfig(config, options = {}) {
     const errors = [];
     const warnings = [];
-    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    if (!isPlainObject(config)) {
       return {valid: false, errors: ['配置体必须为 JSON 对象。'], warnings};
     }
+
+    const liveKeySet = options && options.allowedKeyIds
+      ? new Set(Array.from(options.allowedKeyIds).filter(id => typeof id === 'string' && id.length > 0))
+      : null;
+    const isAllowedKeyId = id => (
+      typeof id === 'string'
+      && OFFICIAL_THUNDER68_KEY_ID_SET.has(id)
+      && (!liveKeySet || liveKeySet.size === 0 || liveKeySet.has(id))
+    );
 
     if (!Array.isArray(config.keyValues)) {
       errors.push('缺少 keyValues 键程数组。');
@@ -233,13 +315,17 @@
       const seenIds = new Set();
       for (let i = 0; i < config.keyValues.length; i++) {
         const key = config.keyValues[i];
-        if (!key || typeof key !== 'object') {
+        if (!isPlainObject(key)) {
           errors.push(`keyValues[${i}] 不是有效对象。`);
           continue;
         }
-        const id = typeof key.id === 'string' ? key.id.trim() : '';
-        if (!id) {
+        const id = typeof key.id === 'string' ? key.id : '';
+        if (!id || !id.trim()) {
           errors.push(`keyValues[${i}] 缺少有效按键 id。`);
+          continue;
+        }
+        if (!isAllowedKeyId(id)) {
+          errors.push(`keyValues[${i}] 包含未知或非雷电68 键名：${id}。`);
           continue;
         }
         if (seenIds.has(id)) {
@@ -247,7 +333,7 @@
         }
         seenIds.add(id);
 
-        const travel = Number(key.travelValue);
+        const travel = coerceStrictNumber(key.travelValue);
         if (!Number.isFinite(travel) || travel < MIN_TRAVEL_MM || travel > MAX_TRAVEL_MM) {
           errors.push(`按键 ${id} 触发行程超范围（${key.travelValue}，允许 ${MIN_TRAVEL_MM}–${MAX_TRAVEL_MM} mm）。`);
         }
@@ -258,7 +344,7 @@
         const independentRt = Boolean(key.isIndependentSensitivity);
         for (const field of ['sensitivity', 'triggerSensitivity', 'resetSensitivity']) {
           if (key[field] === undefined || key[field] === null) continue;
-          const val = Number(key[field]);
+          const val = coerceStrictNumber(key[field]);
           const isFieldActive = rtEnabled && (independentRt ? field !== 'sensitivity' : field === 'sensitivity');
           if (!Number.isFinite(val) || val < 0 || val > MAX_TRAVEL_MM || (val < MIN_TRAVEL_MM && (val !== 0 || isFieldActive))) {
             errors.push(`按键 ${id} 的 ${field} 超范围（${key[field]}，允许 ${MIN_TRAVEL_MM}–${MAX_TRAVEL_MM} mm）。`);
@@ -267,44 +353,197 @@
       }
     }
 
-    if (!config.buttonMap || !Array.isArray(config.buttonMap.mappingData) || config.buttonMap.mappingData.length !== 4) {
+    if (!isPlainObject(config.buttonMap) || !Array.isArray(config.buttonMap.mappingData) || config.buttonMap.mappingData.length !== 4) {
       errors.push('buttonMap.mappingData 必须包含 4 层按键映射对象。');
-    } else if (config.buttonMap.mappingData.some(layer => !layer || typeof layer !== 'object' || Array.isArray(layer))) {
-      errors.push('buttonMap.mappingData 中存在非对象层数据。');
+    } else {
+      for (let layerIdx = 0; layerIdx < 4; layerIdx++) {
+        const layer = config.buttonMap.mappingData[layerIdx];
+        if (!isPlainObject(layer)) {
+          errors.push(`buttonMap.mappingData[${layerIdx}] 不是有效映射对象。`);
+          continue;
+        }
+        for (const [keyId, entry] of Object.entries(layer)) {
+          if (!isAllowedKeyId(keyId)) {
+            errors.push(`buttonMap 第 ${layerIdx + 1} 层包含非法按键名：${keyId}。`);
+            continue;
+          }
+          if (!isPlainObject(entry) || typeof entry.uid !== 'string' || !HEX_UID_RE.test(entry.uid.trim())) {
+            errors.push(`buttonMap 第 ${layerIdx + 1} 层按键 ${keyId} 缺少有效十六进制 uid。`);
+          }
+        }
+      }
     }
 
-    if (!config.lightness || typeof config.lightness !== 'object') {
+    if (!isPlainObject(config.lightness)) {
       errors.push('缺少 lightness 灯效配置。');
     } else {
-      const brightness = Number(config.lightness.brightness);
-      const speed = Number(config.lightness.speed);
-      const effectId = Number(config.lightness.effectId);
+      const brightness = coerceStrictNumber(config.lightness.brightness);
+      const speed = coerceStrictNumber(config.lightness.speed);
+      const effectId = coerceStrictNumber(config.lightness.effectId);
       if (!Number.isFinite(brightness) || brightness < 0 || brightness > 100) {
         errors.push(`灯效亮度超出范围（${config.lightness.brightness}，允许 0–100）。`);
       }
       if (!Number.isFinite(speed) || speed < 0 || speed > 100) {
         errors.push(`灯效速度超出范围（${config.lightness.speed}，允许 0–100）。`);
       }
-      if (!Number.isFinite(effectId) || effectId < 0 || effectId > 99) {
+      if (!Number.isInteger(effectId) || effectId < 0 || effectId > 99) {
         errors.push(`灯效模式编号无效（${config.lightness.effectId}）。`);
+      }
+      if (config.lightness.frontBrightness !== undefined && config.lightness.frontBrightness !== null && config.lightness.frontBrightness !== '') {
+        const fb = coerceStrictNumber(config.lightness.frontBrightness);
+        if (!Number.isFinite(fb) || fb < 0 || fb > 100) {
+          errors.push(`前灯箱亮度超出范围（${config.lightness.frontBrightness}，允许 0–100）。`);
+        }
+      }
+      if (config.lightness.frontSpeed !== undefined && config.lightness.frontSpeed !== null && config.lightness.frontSpeed !== '') {
+        const fs = coerceStrictNumber(config.lightness.frontSpeed);
+        if (!Number.isFinite(fs) || fs < 0 || fs > 100) {
+          errors.push(`前灯箱速度超出范围（${config.lightness.frontSpeed}，允许 0–100）。`);
+        }
+      }
+      if (config.lightness.frontEffectId !== undefined && config.lightness.frontEffectId !== null && config.lightness.frontEffectId !== '') {
+        const fe = coerceStrictNumber(config.lightness.frontEffectId);
+        if (!Number.isInteger(fe) || fe < 0 || fe > 99) {
+          errors.push(`前灯箱模式编号无效（${config.lightness.frontEffectId}）。`);
+        }
       }
     }
 
-    if (!config.macroMap || !Array.isArray(config.macroMap.defaultMacros)) {
+    if (!isPlainObject(config.macroMap) || !Array.isArray(config.macroMap.defaultMacros)) {
       errors.push('缺少 macroMap.defaultMacros 宏配置数组。');
     } else if (config.macroMap.defaultMacros.length > 32) {
       errors.push(`宏数量超出上限（${config.macroMap.defaultMacros.length} > 32）。`);
-    } else if (config.macroMap.defaultMacros.some(m => !m || !Array.isArray(m.actionList))) {
-      errors.push('存在缺少 actionList 的宏条目。');
+    } else {
+      for (let mIdx = 0; mIdx < config.macroMap.defaultMacros.length; mIdx++) {
+        const macro = config.macroMap.defaultMacros[mIdx];
+        if (!isPlainObject(macro) || !Array.isArray(macro.actionList)) {
+          errors.push(`macroMap.defaultMacros[${mIdx}] 缺少有效 actionList。`);
+          continue;
+        }
+        for (let aIdx = 0; aIdx < macro.actionList.length; aIdx++) {
+          const act = macro.actionList[aIdx];
+          if (!isPlainObject(act)) {
+            errors.push(`宏 ${macro.name || `M${mIdx + 1}`} 第 ${aIdx + 1} 步动作结构无效。`);
+            continue;
+          }
+          if (typeof act.code !== 'string' || !act.code.trim()) {
+            errors.push(`宏 ${macro.name || `M${mIdx + 1}`} 第 ${aIdx + 1} 步缺少按键 code。`);
+          }
+          if (typeof act.isDown !== 'boolean') {
+            errors.push(`宏 ${macro.name || `M${mIdx + 1}`} 第 ${aIdx + 1} 步的 isDown 必须为布尔值。`);
+          }
+          const duration = coerceStrictNumber(act.duration);
+          if (!Number.isFinite(duration) || duration < 0 || duration > 600000) {
+            errors.push(`宏 ${macro.name || `M${mIdx + 1}`} 第 ${aIdx + 1} 步时长无效（${act.duration}）。`);
+          }
+        }
+      }
     }
 
-    if (!config.superkeys || typeof config.superkeys !== 'object') {
+    if (!isPlainObject(config.superkeys)) {
       errors.push('缺少 superkeys 超级按键配置。');
     } else {
+      if (config.superkeys.mappingData !== undefined) {
+        if (!isPlainObject(config.superkeys.mappingData)) {
+          errors.push('superkeys.mappingData 必须为对象。');
+        } else {
+          for (const keyId of Object.keys(config.superkeys.mappingData)) {
+            if (!isAllowedKeyId(keyId)) {
+              errors.push(`superkeys.mappingData 包含非法按键名：${keyId}。`);
+            }
+          }
+        }
+      }
       for (const arrKey of ['socdKeys', 'endKeys', 'tglKeys', 'mtKeys', 'mptKeys', 'dskKeys']) {
         if (!Array.isArray(config.superkeys[arrKey])) {
           errors.push(`superkeys.${arrKey} 必须为数组。`);
         }
+      }
+      const primaryKeyOf = (item, allowString) => {
+        if (Array.isArray(item.keyboard)) return item.keyboard[0];
+        return allowString && typeof item.keyboard === 'string' ? item.keyboard : null;
+      };
+      const isNonEmptyStr = v => typeof v === 'string' && v.trim().length > 0;
+
+      if (Array.isArray(config.superkeys.mtKeys)) {
+        config.superkeys.mtKeys.forEach((item, idx) => {
+          if (!isPlainObject(item)) { errors.push(`superkeys.mtKeys[${idx}] 结构无效。`); return; }
+          const kb = primaryKeyOf(item, false);
+          if (!isAllowedKeyId(kb)) errors.push(`superkeys.mtKeys[${idx}] 引用非法按键：${kb}。`);
+          if (!Array.isArray(item.originalKeys) || !isNonEmptyStr(item.originalKeys[0]) || !isNonEmptyStr(item.originalKeys[1])) {
+            errors.push(`superkeys.mtKeys[${idx}] 缺少有效的 originalKeys（需 2 项）。`);
+          }
+          const slider = coerceStrictNumber(item.sliderValue);
+          if (!Number.isInteger(slider) || slider < 0 || slider > 65535) {
+            errors.push(`superkeys.mtKeys[${idx}] 的 sliderValue 无效（${item.sliderValue}）。`);
+          }
+        });
+      }
+      if (Array.isArray(config.superkeys.tglKeys)) {
+        config.superkeys.tglKeys.forEach((item, idx) => {
+          if (!isPlainObject(item)) { errors.push(`superkeys.tglKeys[${idx}] 结构无效。`); return; }
+          const kb = primaryKeyOf(item, false);
+          if (!isAllowedKeyId(kb)) errors.push(`superkeys.tglKeys[${idx}] 引用非法按键：${kb}。`);
+          if (!Array.isArray(item.originalKeys) || !isNonEmptyStr(item.originalKeys[0])) {
+            errors.push(`superkeys.tglKeys[${idx}] 缺少有效的 originalKeys[0]。`);
+          }
+        });
+      }
+      if (Array.isArray(config.superkeys.mptKeys)) {
+        config.superkeys.mptKeys.forEach((item, idx) => {
+          if (!isPlainObject(item)) { errors.push(`superkeys.mptKeys[${idx}] 结构无效。`); return; }
+          const kb = primaryKeyOf(item, false);
+          if (!isAllowedKeyId(kb)) errors.push(`superkeys.mptKeys[${idx}] 引用非法按键：${kb}。`);
+          if (!Array.isArray(item.originalKeys) || item.originalKeys.length < 3 || !item.originalKeys.slice(0, 3).every(isNonEmptyStr)) {
+            errors.push(`superkeys.mptKeys[${idx}] 缺少有效的 originalKeys（需 3 项）。`);
+          }
+          if (!Array.isArray(item.mptDis) || item.mptDis.length < 3 || !item.mptDis.slice(0, 3).every(d => {
+            const n = coerceStrictNumber(d);
+            return Number.isFinite(n) && n >= MIN_TRAVEL_MM && n <= MAX_TRAVEL_MM;
+          })) {
+            errors.push(`superkeys.mptKeys[${idx}] 的 mptDis 行程参数无效。`);
+          }
+        });
+      }
+      if (Array.isArray(config.superkeys.endKeys)) {
+        config.superkeys.endKeys.forEach((item, idx) => {
+          if (!isPlainObject(item)) { errors.push(`superkeys.endKeys[${idx}] 结构无效。`); return; }
+          const kb = primaryKeyOf(item, true);
+          if (!isAllowedKeyId(kb)) errors.push(`superkeys.endKeys[${idx}] 引用非法按键：${kb}。`);
+          if (!Array.isArray(item.originalKeys) || !isNonEmptyStr(item.originalKeys[1])) {
+            errors.push(`superkeys.endKeys[${idx}] 缺少有效的 originalKeys[1]。`);
+          }
+        });
+      }
+      if (Array.isArray(config.superkeys.socdKeys)) {
+        config.superkeys.socdKeys.forEach((item, idx) => {
+          if (!isPlainObject(item)) { errors.push(`superkeys.socdKeys[${idx}] 结构无效。`); return; }
+          const kb = primaryKeyOf(item, true);
+          if (!isAllowedKeyId(kb)) errors.push(`superkeys.socdKeys[${idx}] 主键非法：${kb}。`);
+          const peer = Array.isArray(item.keys) ? item.keys[0] : null;
+          if (!isAllowedKeyId(peer)) errors.push(`superkeys.socdKeys[${idx}] 配对键非法：${peer}。`);
+          const mode = coerceStrictNumber(item.behaviorMode);
+          if (!Number.isInteger(mode) || mode < 0 || mode > 255) {
+            errors.push(`superkeys.socdKeys[${idx}] 的 behaviorMode 无效（${item.behaviorMode}）。`);
+          }
+          const travel = coerceStrictNumber(item.socdTravelValue);
+          if (!Number.isFinite(travel) || travel < MIN_TRAVEL_MM || travel > MAX_TRAVEL_MM) {
+            errors.push(`superkeys.socdKeys[${idx}] 的 socdTravelValue 超范围（${item.socdTravelValue}）。`);
+          }
+        });
+      }
+      if (Array.isArray(config.superkeys.dskKeys)) {
+        config.superkeys.dskKeys.forEach((item, idx) => {
+          if (!isPlainObject(item)) { errors.push(`superkeys.dskKeys[${idx}] 结构无效。`); return; }
+          const kb = primaryKeyOf(item, false);
+          if (!isAllowedKeyId(kb)) errors.push(`superkeys.dskKeys[${idx}] 引用非法按键：${kb}。`);
+          if (!Array.isArray(item.originalKeys) || item.originalKeys.length < 1) {
+            errors.push(`superkeys.dskKeys[${idx}] 缺少 originalKeys 数组。`);
+          }
+          if (!Array.isArray(item.rowBinary) || item.rowBinary.length < 4 || !item.rowBinary.slice(0, 4).every(b => typeof b === 'string' && BINARY_BYTE_RE.test(b))) {
+            errors.push(`superkeys.dskKeys[${idx}] 的 rowBinary 必须为 4 组 8 位二进制字符串。`);
+          }
+        });
       }
     }
 
@@ -444,7 +683,8 @@
       userCombineKeys: null,
       hintText: '',
       hintSource: '',
-      mask: false,
+      // Keep mask: true during USER_IMPORT_WHOLE_CONFIG so UI busy guard stays active until hardware end-frame unlocks it.
+      mask: true,
       maskMacro: false,
       maskTrigger: false,
       showConfigureUI: false,
@@ -592,6 +832,57 @@
       }
     }
 
+    const settingsChanges = [];
+    const rateA = a.settings?.rate;
+    const rateB = b.settings?.rate;
+    if (rateA !== rateB && (rateA !== undefined || rateB !== undefined)) {
+      settingsChanges.push({
+        field: 'rate',
+        label: '回报率',
+        from: rateA !== undefined && rateA !== null ? `${rateA} Hz` : '--',
+        to: rateB !== undefined && rateB !== null ? `${rateB} Hz` : '--'
+      });
+    }
+    const sleepA = a.settings?.sleeptime;
+    const sleepB = b.settings?.sleeptime;
+    if (sleepA !== sleepB && (sleepA !== undefined || sleepB !== undefined)) {
+      settingsChanges.push({
+        field: 'sleeptime',
+        label: '休眠时间',
+        from: sleepA !== undefined && sleepA !== null ? `${sleepA} 分钟` : '--',
+        to: sleepB !== undefined && sleepB !== null ? `${sleepB} 分钟` : '--'
+      });
+    }
+    const gdlA = Array.isArray(a.settings?.game_disable_list) ? a.settings.game_disable_list.map(Boolean) : null;
+    const gdlB = Array.isArray(b.settings?.game_disable_list) ? b.settings.game_disable_list.map(Boolean) : null;
+    if (gdlA && gdlB && JSON.stringify(gdlA) !== JSON.stringify(gdlB)) {
+      const fmtList = list => `已启用 ${list.filter(Boolean).length}/${list.length} 项`;
+      settingsChanges.push({
+        field: 'game_disable_list',
+        label: '游戏模式禁用组合键',
+        from: fmtList(gdlA),
+        to: fmtList(gdlB)
+      });
+    } else if ((gdlA && !gdlB) || (!gdlA && gdlB)) {
+      const fmtList = list => list ? `已启用 ${list.filter(Boolean).length}/${list.length} 项` : '--';
+      settingsChanges.push({
+        field: 'game_disable_list',
+        label: '游戏模式禁用组合键',
+        from: fmtList(gdlA),
+        to: fmtList(gdlB)
+      });
+    }
+    const trigModeA = a.triggerMode?.triggerIndex;
+    const trigModeB = b.triggerMode?.triggerIndex;
+    if (trigModeA !== trigModeB && (trigModeA !== undefined || trigModeB !== undefined)) {
+      settingsChanges.push({
+        field: 'triggerMode',
+        label: '触发模式',
+        from: trigModeA !== undefined && trigModeA !== null ? `模式 ${trigModeA}` : '--',
+        to: trigModeB !== undefined && trigModeB !== null ? `模式 ${trigModeB}` : '--'
+      });
+    }
+
     const summaryParts = [];
     if (travelChanges.length) summaryParts.push(`触发行程 ${travelChanges.length} 键`);
     if (rtChanges.length) summaryParts.push(`快速触发 RT ${rtChanges.length} 键`);
@@ -599,6 +890,7 @@
     if (lightingChanges.length) summaryParts.push(`灯效 ${lightingChanges.length} 项`);
     if (superkeyChanges.length) summaryParts.push(`超级按键 ${superkeyChanges.length} 类`);
     if (macroChanges.length) summaryParts.push(`宏 ${macroChanges.length} 组`);
+    if (settingsChanges.length) summaryParts.push(`系统/触发模式 ${settingsChanges.length} 项`);
 
     const hasChanges = summaryParts.length > 0;
     return {
@@ -609,9 +901,40 @@
       lightingChanges,
       superkeyChanges,
       macroChanges,
+      settingsChanges,
       changedKeyIds: [...changedKeySet],
       summaryText: hasChanges ? summaryParts.join(' · ') : '两套方案的核心配置完全一致'
     };
+  }
+
+  function evaluateProfileApplyState({
+    elapsedMs = 0,
+    sawMask = false,
+    busy = false,
+    sentDelta = 0,
+    deviceOpened = true,
+    sendError = '',
+    disconnected = false
+  } = {}) {
+    if (disconnected || !deviceOpened) {
+      return {done: true, outcome: 'error', reason: 'disconnected'};
+    }
+    if (sendError) {
+      return {done: true, outcome: 'error', reason: 'hid-send-error'};
+    }
+    if (sawMask && !busy && sentDelta > 0 && elapsedMs >= 800) {
+      return {done: true, outcome: 'success', reason: 'confirmed'};
+    }
+    if (!sawMask && sentDelta === 0 && elapsedMs >= 3500) {
+      return {done: true, outcome: 'error', reason: 'no-write-started'};
+    }
+    if (sawMask && !busy && sentDelta === 0 && elapsedMs >= 2000) {
+      return {done: true, outcome: 'error', reason: 'no-packets-sent'};
+    }
+    if (elapsedMs >= 20000 || (!sawMask && sentDelta > 0 && elapsedMs >= 6000)) {
+      return {done: true, outcome: 'warning', reason: 'timeout-unconfirmed'};
+    }
+    return {done: false, outcome: 'pending', reason: 'waiting'};
   }
 
   return {
@@ -620,6 +943,7 @@
     EXPECTED_KEY_COUNT,
     MIN_TRAVEL_MM,
     MAX_TRAVEL_MM,
+    OFFICIAL_THUNDER68_KEY_IDS,
     VOLATILE_CONFIG_KEYS,
     VOLATILE_SETTINGS_KEYS,
     isValidProfileId,
@@ -631,6 +955,7 @@
     createProfileEnvelope,
     parseImportedProfileJson,
     buildOfficialImportPayload,
-    diffProfileConfigs
+    diffProfileConfigs,
+    evaluateProfileApplyState
   };
 });

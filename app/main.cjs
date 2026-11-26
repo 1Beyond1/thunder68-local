@@ -84,7 +84,10 @@ let lastDeviceStatusKey = '';
 let lowBatteryNotified = false;
 let quickSwitchCursor = 0;
 let autoPreloadAttempted = false;
+let preloadCancelled = false;
 let silentAutoConnectUntil = 0;
+let companionActionSeq = 0;
+const pendingProfileSwitchRequests = new Map();
 let shortcutStatus = {
   toggleWindow: {accelerator: '', ok: true, error: ''},
   quickSwitchProfile: {accelerator: '', ok: true, error: ''}
@@ -224,12 +227,15 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
         callback('');
         if (backgroundTest || isSilentAuto) return;
         const isBt = discovery.reason === 'bluetooth-unsupported';
+        const isOtherModel = discovery.reason === 'unsupported-model';
         await dialog.showMessageBox(activeWindow(), {
           type: 'info',
-          title: isBt ? '蓝牙模式不支持 WebHID' : '未找到雷电68',
+          title: isBt ? '蓝牙模式不支持 WebHID' : isOtherModel ? '检测到非雷电68 设备' : '未找到雷电68',
           message: isBt
             ? '检测到雷电68 非配置接口（疑似蓝牙模式），请切换到 USB 有线或 2.4G 接收器模式后再连接。'
-            : '请通过 USB 线或 2.4G 接收器连接雷电68，再点击连接。',
+            : isOtherModel
+              ? '检测到达尔优同品牌其他型号设备，但未发现雷电68 的 USB 有线（PID 0x0211）或 2.4G 接收器（PID 0x0434）配置接口。'
+              : '请通过 USB 线或 2.4G 接收器连接雷电68，再点击连接（蓝牙模式不支持 WebHID 配置）。',
           detail: '如果官网驱动仍开着，请先断开官网中的键盘连接。'
         });
         return;
@@ -283,7 +289,7 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
           const initialTheme = resolveEffectiveTheme(preferences.themeChoice, nativeTheme.shouldUseDarkColors);
           const injection = '<link rel="stylesheet" href="/thunder68/local-desktop.css"><script src="/thunder68/local-shell-helpers.js"></script><script src="/thunder68/local-profile-core.js"></script><script src="/thunder68/local-desktop.js"></script><script src="/thunder68/vendor-bridge.js"></script><script src="/thunder68/local-ui.js"></script><script src="/thunder68/local-profiles-panel.js"></script><script src="/thunder68/local-key-tester.js"></script><script src="/thunder68/local-companion-panel.js"></script></head>';
           let html = injectInitialThemeIntoHtml(body.toString('utf8'), initialTheme, preferences.themeChoice);
-          html = html.replace('</head>', injection);
+          html = html.replace(/<\/head>/i, () => injection);
           body = Buffer.from(html);
         }
         return new Response(body, {
@@ -320,10 +326,46 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
       }
     };
 
-    const triggerProfileApply = profileId => {
+    const applyWindowChrome = (win, resolvedTheme) => {
+      if (!win || win.isDestroyed()) return;
+      const chrome = getThemeWindowChrome(resolvedTheme);
+      if (typeof win.setTitleBarOverlay === 'function') {
+        try {
+          win.setTitleBarOverlay(chrome.titleBarOverlay);
+        } catch (error) {
+          log({event: 'titlebar-overlay-error', message: error?.message || String(error)});
+        }
+      }
+      if (typeof win.setBackgroundColor === 'function') {
+        try {
+          win.setBackgroundColor(chrome.backgroundColor);
+        } catch {}
+      }
+    };
+
+    const triggerProfileApply = (profileId, profileName = '', {advanceCursorOnSuccess = false, listLength = 0} = {}) => {
       const win = activeWindow();
-      if (!win) return;
-      win.webContents.send('companion:action', {type: 'apply-profile', id: profileId});
+      if (!win) {
+        showGentleNotification('雷电68 方案切换失败', '主窗口尚未就绪，请打开主窗口后重试。');
+        return;
+      }
+      const requestId = `sw-${Date.now()}-${++companionActionSeq}`;
+      const timer = setTimeout(() => {
+        const entry = pendingProfileSwitchRequests.get(requestId);
+        if (!entry) return;
+        pendingProfileSwitchRequests.delete(requestId);
+        showGentleNotification('雷电68 方案切换失败', `切换方案「${entry.profileName || entry.profileId}」超时未收到渲染层响应，请打开主窗口检查键盘连接。`);
+        log({event: 'companion-profile-switch-timeout', name: entry.profileId});
+      }, 5000);
+      if (typeof timer.unref === 'function') timer.unref();
+      pendingProfileSwitchRequests.set(requestId, {
+        profileId,
+        profileName,
+        advanceCursorOnSuccess,
+        listLength,
+        timer
+      });
+      win.webContents.send('companion:action', {type: 'apply-profile', id: profileId, requestId});
     };
 
     const triggerOpenTool = toolId => {
@@ -333,19 +375,38 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
       win.webContents.send('companion:action', {type: 'open-tool', toolId});
     };
 
+    const getLoginItemArgs = () => (app.isPackaged ? ['--minimized'] : [path.resolve(__dirname, '..'), '--minimized']);
+
+    const reconcileAutoLaunchPreference = () => {
+      if (diagnosing || (process.platform !== 'win32' && process.platform !== 'darwin')) return;
+      try {
+        const settings = app.getLoginItemSettings({
+          path: process.execPath,
+          args: getLoginItemArgs()
+        });
+        if (typeof settings?.openAtLogin === 'boolean' && settings.openAtLogin !== preferences.autoLaunch) {
+          persistPreferences({autoLaunch: settings.openAtLogin});
+          log({event: 'auto-launch-reconciled', reason: settings.openAtLogin ? 'enabled' : 'disabled'});
+        }
+      } catch (error) {
+        log({event: 'login-item-query-error', message: error?.message || String(error)});
+      }
+    };
+
     const applyLoginItemSetting = enabled => {
       if (diagnosing) return;
       try {
-        const args = app.isPackaged ? ['--minimized'] : [path.resolve(__dirname, '..'), '--minimized'];
         app.setLoginItemSettings({
           openAtLogin: Boolean(enabled),
           path: process.execPath,
-          args
+          args: getLoginItemArgs()
         });
       } catch (error) {
         log({event: 'login-item-error', message: error.message});
       }
     };
+
+    reconcileAutoLaunchPreference();
 
     const applyGlobalShortcuts = () => {
       if (diagnosing) return shortcutStatus;
@@ -381,9 +442,7 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
             return;
           }
           const target = list[quickSwitchCursor % list.length];
-          quickSwitchCursor = (quickSwitchCursor + 1) % list.length;
-          triggerProfileApply(target.id);
-          showGentleNotification('雷电68 方案切换', `正在通过官方原生导入通道切换至「${target.name}」`);
+          triggerProfileApply(target.id, target.name, {advanceCursorOnSuccess: true, listLength: list.length});
         })
       };
       return shortcutStatus;
@@ -406,8 +465,7 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
             label: profile.name,
             enabled: canSwitch,
             click: () => {
-              triggerProfileApply(profile.id);
-              showGentleNotification('雷电68 方案切换', `正在切换方案「${profile.name}」`);
+              triggerProfileApply(profile.id, profile.name);
             }
           }))
         : [{label: '暂无已保存方案', enabled: false}];
@@ -452,11 +510,50 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
     ipcMain.on('theme', (event, theme, choice) => {
       const win = activeWindow();
       if (!win || event.sender !== win.webContents || !['dark', 'light'].includes(theme)) return;
-      const chrome = getThemeWindowChrome(theme);
-      win.setTitleBarOverlay(chrome.titleBarOverlay);
-      win.setBackgroundColor(chrome.backgroundColor);
+      applyWindowChrome(win, theme);
       if (['system', 'dark', 'light'].includes(choice) && choice !== preferences.themeChoice) {
         persistPreferences({themeChoice: choice});
+      }
+    });
+
+    ipcMain.on('clear-silent-auto-connect', event => {
+      const win = activeWindow();
+      if (!win || event.sender !== win.webContents) return;
+      silentAutoConnectUntil = 0;
+      preloadCancelled = true;
+    });
+
+    ipcMain.on('companion:action-result', (event, result) => {
+      const win = activeWindow();
+      if (!win || event.sender !== win.webContents || !result || typeof result !== 'object') return;
+      if (result.type !== 'apply-profile') return;
+      const reqId = typeof result.requestId === 'string' ? result.requestId : '';
+      const pending = reqId ? pendingProfileSwitchRequests.get(reqId) : null;
+
+      if (result.stage === 'dispatched') {
+        if (pending) {
+          clearTimeout(pending.timer);
+          pendingProfileSwitchRequests.delete(reqId);
+        }
+        const label = result.profileName || pending?.profileName || pending?.profileId || '目标方案';
+        if (!result.ok) {
+          showGentleNotification('雷电68 方案切换失败', result.error || '当前无法切换方案，请检查键盘连接或忙态。');
+          log({event: 'companion-profile-switch-failed', name: pending?.profileId || '', message: result.error || ''});
+        } else {
+          if (pending?.advanceCursorOnSuccess && pending.listLength > 0) {
+            quickSwitchCursor = (quickSwitchCursor + 1) % pending.listLength;
+          }
+          showGentleNotification('雷电68 方案切换', `正在通过官方原生导入通道切换至「${label}」`);
+        }
+      } else if (result.stage === 'completed') {
+        const label = result.profileName || '目标方案';
+        if (result.outcome === 'error') {
+          showGentleNotification('雷电68 方案写入失败', result.message || `方案「${label}」写入失败或断连，请打开主窗口检查。`);
+        } else if (result.outcome === 'warning') {
+          showGentleNotification('雷电68 方案写入超时未确认', result.message || `方案「${label}」超时未收到硬件解锁信号，请打开主窗口核对。`);
+        } else if (result.outcome === 'success') {
+          showGentleNotification('雷电68 方案已下发', `方案「${label}」已写入完成，可打开主窗口点击「重新读取核对」。`);
+        }
       }
     });
 
@@ -495,6 +592,7 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
     ipcMain.handle('preferences:get', event => {
       const win = activeWindow();
       if (!win || event.sender !== win.webContents) return null;
+      reconcileAutoLaunchPreference();
       return {
         preferences,
         shortcutStatus,
@@ -517,9 +615,7 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
         applyGlobalShortcuts();
       }
       const resolved = resolveEffectiveTheme(preferences.themeChoice, nativeTheme.shouldUseDarkColors);
-      const chrome = getThemeWindowChrome(resolved);
-      win.setTitleBarOverlay(chrome.titleBarOverlay);
-      win.setBackgroundColor(chrome.backgroundColor);
+      applyWindowChrome(win, resolved);
       rebuildTrayMenu();
       return {
         preferences,
@@ -601,46 +697,56 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
     ipcMain.handle('profiles:exportFile', async (event, {id, format = 'profile'} = {}) => {
       const win = activeWindow();
       if (!win || event.sender !== win.webContents) return {ok: false, canceled: true};
-      const profile = readProfileFile(getProfilesDir(), id);
-      if (!profile) return {ok: false, error: '找不到指定方案。'};
-      const safeFileName = (profile.name || profile.id).replace(/[<>:"/\\|?*]+/g, '_').slice(0, 50) || profile.id;
-      const dialogResult = await dialog.showSaveDialog(win, {
-        title: '导出配置方案 JSON',
-        defaultPath: `${safeFileName}${format === 'official' ? '.official' : ''}.json`,
-        filters: [{name: 'JSON 配置文件', extensions: ['json']}]
-      });
-      if (dialogResult.canceled || !dialogResult.filePath) return {ok: false, canceled: true};
-      const out = format === 'official'
-        ? profileCore.buildOfficialImportPayload(profile.config)
-        : profile;
-      await fsp.writeFile(dialogResult.filePath, JSON.stringify(out, null, 2), 'utf8');
-      return {ok: true, canceled: false};
+      try {
+        const profile = readProfileFile(getProfilesDir(), id);
+        if (!profile) return {ok: false, error: '找不到指定方案。'};
+        const safeFileName = (profile.name || profile.id).replace(/[<>:"/\\|?*]+/g, '_').slice(0, 50) || profile.id;
+        const dialogResult = await dialog.showSaveDialog(win, {
+          title: '导出配置方案 JSON',
+          defaultPath: `${safeFileName}${format === 'official' ? '.official' : ''}.json`,
+          filters: [{name: 'JSON 配置文件', extensions: ['json']}]
+        });
+        if (dialogResult.canceled || !dialogResult.filePath) return {ok: false, canceled: true};
+        const out = format === 'official'
+          ? profileCore.buildOfficialImportPayload(profile.config)
+          : profile;
+        await fsp.writeFile(dialogResult.filePath, JSON.stringify(out, null, 2), 'utf8');
+        return {ok: true, canceled: false};
+      } catch (error) {
+        log({event: 'profile-export-error', name: String(id || ''), message: error?.message || String(error)});
+        return {ok: false, canceled: false, error: `导出方案失败：${error?.message || '读写异常'}`};
+      }
     });
 
     ipcMain.handle('profiles:importFile', async event => {
       const win = activeWindow();
       if (!win || event.sender !== win.webContents) return {ok: false, canceled: true};
-      const dialogResult = await dialog.showOpenDialog(win, {
-        title: '导入配置方案 JSON',
-        properties: ['openFile'],
-        filters: [{name: 'JSON 配置文件', extensions: ['json']}]
-      });
-      if (dialogResult.canceled || !dialogResult.filePaths?.length) return {ok: false, canceled: true};
-      const picked = dialogResult.filePaths[0];
-      const stat = await fsp.stat(picked);
-      if (stat.size > 2 * 1024 * 1024) {
-        return {ok: false, errors: ['配置文件超过 2 MiB 上限，已拒绝导入。']};
+      try {
+        const dialogResult = await dialog.showOpenDialog(win, {
+          title: '导入配置方案 JSON',
+          properties: ['openFile'],
+          filters: [{name: 'JSON 配置文件', extensions: ['json']}]
+        });
+        if (dialogResult.canceled || !dialogResult.filePaths?.length) return {ok: false, canceled: true};
+        const picked = dialogResult.filePaths[0];
+        const stat = await fsp.stat(picked);
+        if (stat.size > 2 * 1024 * 1024) {
+          return {ok: false, errors: ['配置文件超过 2 MiB 上限，已拒绝导入。']};
+        }
+        const rawText = await fsp.readFile(picked, 'utf8');
+        const fallbackName = path.basename(picked, path.extname(picked)).slice(0, 50) || '导入方案';
+        const parsed = profileCore.parseImportedProfileJson(rawText, fallbackName);
+        if (!parsed.ok) return {ok: false, errors: parsed.errors};
+        const saved = saveProfileFile(getProfilesDir(), parsed.profile);
+        if (saved.ok) {
+          log({event: 'profile-imported', name: saved.profile.id});
+          rebuildTrayMenu();
+        }
+        return saved;
+      } catch (error) {
+        log({event: 'profile-import-error', message: error?.message || String(error)});
+        return {ok: false, canceled: false, errors: [`读取或保存导入文件失败：${error?.message || '文件不可读'}`]};
       }
-      const rawText = await fsp.readFile(picked, 'utf8');
-      const fallbackName = path.basename(picked, path.extname(picked)).slice(0, 50) || '导入方案';
-      const parsed = profileCore.parseImportedProfileJson(rawText, fallbackName);
-      if (!parsed.ok) return {ok: false, errors: parsed.errors};
-      const saved = saveProfileFile(getProfilesDir(), parsed.profile);
-      if (saved.ok) {
-        log({event: 'profile-imported', name: saved.profile.id});
-        rebuildTrayMenu();
-      }
-      return saved;
     });
 
     const initialTheme = resolveEffectiveTheme(preferences.themeChoice, nativeTheme.shouldUseDarkColors);
@@ -776,7 +882,7 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
       const decision = evaluateSilentAutoConnectPolicy({
         diagnosing,
         autoConnectOnLaunch: preferences.autoConnectOnLaunch,
-        alreadyAttempted: autoPreloadAttempted,
+        alreadyAttempted: autoPreloadAttempted || preloadCancelled,
         windowVisible: Boolean(win && win.isVisible()),
         deviceOpened: latestDeviceStatus.deviceOpened
       });
@@ -785,12 +891,16 @@ if (!diagnosing && !app.requestSingleInstanceLock()) {
       try {
         for (let attempt = 0; attempt < 25; attempt++) {
           const current = activeWindow();
-          if (!current) return;
+          if (!current || !current.isVisible() || preloadCancelled || !preferences.autoConnectOnLaunch || latestDeviceStatus.deviceOpened) {
+            return;
+          }
           const canRun = await current.webContents.executeJavaScript(
             'Boolean(window.thunder68Shell && window.thunder68Shell.canPreload && window.thunder68Shell.canPreload())'
           );
           if (canRun) {
-            if (!preferences.autoConnectOnLaunch || latestDeviceStatus.deviceOpened) return;
+            if (!current.isVisible() || preloadCancelled || !preferences.autoConnectOnLaunch || latestDeviceStatus.deviceOpened) {
+              return;
+            }
             silentAutoConnectUntil = Date.now() + 5000;
             log({event: 'auto-preload-start'});
             const started = await current.webContents.executeJavaScript(

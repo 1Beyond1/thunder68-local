@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('thunder68Local', Object.freeze({
   diagnostic: detail => ipcRenderer.send('diagnostic', detail),
   setTheme: (theme, choice) => ipcRenderer.send('theme', theme, choice),
   reportDeviceStatus: status => ipcRenderer.send('device-status', status),
+  clearSilentAutoConnect: () => ipcRenderer.send('clear-silent-auto-connect'),
+  reportCompanionActionResult: result => ipcRenderer.send('companion:action-result', result),
   readDiagnostics: () => ipcRenderer.invoke('diagnostics:read'),
   onHidDiscovery: callback => {
     if (typeof callback !== 'function') return () => {};

@@ -30,6 +30,7 @@
 ├── release/                  # [Git 忽略] npm run build 生成的便携版目录 Thunder68-Local/
 ├── .tmp/                     # [Git 忽略] 临时脚本、中间日志与自检暂存目录（用完即删）
 ├── DEVELOPMENT.md            # 详细的架构与开发维护说明
+├── CHANGELOG.md              # 版本更新日志
 ├── THIRD_PARTY_NOTICES.md    # 第三方资源来源与授权边界声明
 ├── README.md                 # 中文主说明文档
 └── README.en.md              # 英文说明文档
@@ -75,7 +76,7 @@ npm run sync
 # 如需强制重新拉取并清理过期旧资源
 node scripts/sync-official.cjs --force
 
-# 运行干净环境单元测试（node:test，当前覆盖 42 项用例，无需 app/vendor/）
+# 运行干净环境单元测试（node:test，需 Node >= 22.12.0，当前覆盖 53 项用例，无需 app/vendor/）
 npm test
 
 # 静态合规检查与本地官方资产 SHA256 校验

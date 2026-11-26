@@ -3,7 +3,15 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const {discoverAssetPaths, createManifestEntry, planStaleFiles} = require('../scripts/sync-official.cjs');
+const {
+  ORIGIN,
+  discoverAssetPaths,
+  createManifestEntry,
+  canReuseCachedAsset,
+  validateFetchedResponse,
+  writeJsonAtomic,
+  planStaleFiles
+} = require('../scripts/sync-official.cjs');
 const {
   verifyBuildPrerequisites,
   mirrorAppDirectory,
@@ -38,6 +46,71 @@ test('sync-official discovers local assets, builds index.html manifest entry, an
     ['/vendor/thunder68/index.html', '/vendor/thunder68/keep.js']
   );
   assert.deepEqual(stale, ['/vendor/thunder68/old.png']);
+});
+
+test('sync-official validates cached SHA256, rejects 0-byte/HTML-fallback/cross-origin responses, and writes manifest atomically', async () => {
+  const payload = Buffer.from('console.log("ok");');
+  const entry = createManifestEntry('/thunder68/static/js/app.js', '/thunder68/static/js/app.js', '/thunder68/static/js/app.js', payload);
+
+  // Cache reuse requires exact SHA256 match and non-zero bytes
+  assert.equal(canReuseCachedAsset(payload, entry), true);
+  assert.equal(canReuseCachedAsset(Buffer.alloc(0), entry), false);
+  assert.equal(canReuseCachedAsset(Buffer.from('corrupted'), entry), false);
+  assert.equal(canReuseCachedAsset(payload, null), false);
+
+  const makeResponse = ({ok = true, status = 200, url = ORIGIN + '/thunder68/static/js/app.js', contentType = 'application/javascript'}) => ({
+    ok,
+    status,
+    url,
+    headers: {get: name => (name.toLowerCase() === 'content-type' ? contentType : '')}
+  });
+
+  // Valid JS asset passes
+  assert.doesNotThrow(() => validateFetchedResponse('/thunder68/static/js/app.js', makeResponse({}), payload));
+
+  // SPA text/html fallback rejected for .js, .css, .jpg, .jpeg, .gif, .webp
+  for (const assetPath of [
+    '/thunder68/static/js/main.js',
+    '/thunder68/static/css/main.css',
+    '/thunder68/imgs/a.jpg',
+    '/thunder68/imgs/b.jpeg',
+    '/thunder68/imgs/c.gif',
+    '/thunder68/imgs/d.webp'
+  ]) {
+    assert.throws(
+      () => validateFetchedResponse(assetPath, makeResponse({url: ORIGIN + assetPath, contentType: 'text/html; charset=utf-8'}), Buffer.from('<html></html>')),
+      /HTML fallback/
+    );
+  }
+
+  // Real HTML path allows text/html
+  assert.doesNotThrow(() =>
+    validateFetchedResponse('/thunder68/index.html', makeResponse({url: ORIGIN + '/thunder68', contentType: 'text/html'}), Buffer.from('<html></html>'))
+  );
+
+  // Cross-origin redirect rejected
+  assert.throws(
+    () => validateFetchedResponse('/thunder68/static/js/app.js', makeResponse({url: 'https://evil.example/app.js'}), payload),
+    /cross-origin/
+  );
+
+  // 0-byte network response rejected
+  assert.throws(
+    () => validateFetchedResponse('/thunder68/static/js/app.js', makeResponse({}), Buffer.alloc(0)),
+    /Empty response/
+  );
+
+  // Atomic manifest write leaves no .tmp artifacts
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'thunder68-manifest-'));
+  try {
+    const manifestFile = path.join(tmp, 'manifest.json');
+    await writeJsonAtomic(manifestFile, {files: [entry], failed: []});
+    const parsed = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+    assert.equal(parsed.files.length, 1);
+    assert.equal(fs.readdirSync(tmp).filter(name => name.endsWith('.tmp')).length, 0);
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
 });
 
 test('build-portable validates prerequisites and mirrors app while pruning orphans and excluded files', () => {

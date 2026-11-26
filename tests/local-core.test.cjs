@@ -20,6 +20,7 @@ const {
   formatDeviceChoice,
   resolveWritableDataDir,
   shouldPackageAppFile,
+  writeJsonAtomicSync,
   normalizePreferences,
   mergePreferences,
   loadPreferencesSync,
@@ -45,9 +46,12 @@ test('Only the supported Thunder68 devices receive HID access', () => {
   assert.equal(isConfigInterface({vendorId: 0x369b, productId: 0x211, collections: [{usagePage: 1, usage: 6}]}), false);
 });
 
-test('Offline routes resolve to local assets and reject other origins and traversal', () => {
+test('Offline routes resolve to local assets, decode once, and reject other origins and traversal', () => {
   assert.equal(resolveAsset(root, LOCAL_ORIGIN + '/thunder68/index/keymap'), path.join(root, 'thunder68/index.html'));
   assert.equal(resolveAsset(root, LOCAL_ORIGIN + '/thunder68/plus.png'), path.join(root, 'thunder68/plus.png'));
+  // Single decodeURIComponent: %25 resolves to literal '%' instead of failing second decode or double-decoding traversal
+  assert.equal(resolveAsset(root, LOCAL_ORIGIN + '/thunder68/100%25.png'), path.join(root, 'thunder68/100%.png'));
+  assert.equal(resolveAsset(root, LOCAL_ORIGIN + '/thunder68/%252e%252e/file.png'), path.join(root, 'thunder68/%2e%2e/file.png'));
   for (const url of [
     'https://example.com/thunder68/plus.png',
     LOCAL_ORIGIN + '/data/secret',
@@ -156,7 +160,7 @@ test('shouldPackageAppFile excludes debug audit and obsolete files', () => {
   assert.equal(shouldPackageAppFile('vendor/thunder68/index.html'), true);
 });
 
-test('classifyHidDiscovery distinguishes ready, bluetooth-unsupported, and no-device', () => {
+test('classifyHidDiscovery distinguishes ready, bluetooth-unsupported, unsupported-model, and no-device', () => {
   const ready = classifyHidDiscovery([
     {name: 'THUNDER 68', vendorId: 0x369b, productId: 0x0211, collections: [{usagePage: 0xff60, usage: 0x61}]}
   ]);
@@ -169,17 +173,63 @@ test('classifyHidDiscovery distinguishes ready, bluetooth-unsupported, and no-de
   assert.equal(btByName.reason, 'bluetooth-unsupported');
   assert.equal(btByName.suspectedBluetoothCount, 1);
 
-  const btSameVendor = classifyHidDiscovery([
+  const btSameModel = classifyHidDiscovery([
     {name: 'DAREU Keyboard', vendorId: 0x369b, productId: 0x0211, collections: [{usagePage: 1, usage: 6}]}
   ]);
-  assert.equal(btSameVendor.reason, 'bluetooth-unsupported');
-  assert.equal(btSameVendor.sameVendorNonConfigCount, 1);
+  assert.equal(btSameModel.reason, 'bluetooth-unsupported');
+  assert.equal(btSameModel.sameVendorNonConfigCount, 1);
+
+  const otherModel = classifyHidDiscovery([
+    {name: 'DAREU A87 Pro', vendorId: 0x369b, productId: 0x02b1, collections: [{usagePage: 0xff60, usage: 0x61}]}
+  ]);
+  assert.equal(otherModel.reason, 'unsupported-model');
+  assert.equal(otherModel.unsupportedSameVendorCount, 1);
+  assert.equal(otherModel.suspectedBluetoothCount, 0);
 
   const empty = classifyHidDiscovery([
     {name: 'Generic Mouse', vendorId: 0x046d, productId: 0xc52b, collections: [{usagePage: 1, usage: 2}]}
   ]);
   assert.equal(empty.reason, 'no-device');
   assert.equal(empty.configCandidatesCount, 0);
+});
+
+test('writeJsonAtomicSync retries transient Windows rename locks and cleans up temp files on failure', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'thunder68-atomic-'));
+  try {
+    const target = path.join(tmp, 'prefs.json');
+    let renameCalls = 0;
+    const flakyFs = {
+      mkdirSync: fs.mkdirSync,
+      writeFileSync: fs.writeFileSync,
+      unlinkSync: fs.unlinkSync,
+      renameSync(src, dst) {
+        renameCalls++;
+        if (renameCalls < 3) {
+          throw Object.assign(new Error('EBUSY'), {code: 'EBUSY'});
+        }
+        return fs.renameSync(src, dst);
+      }
+    };
+    writeJsonAtomicSync(target, {ok: true}, {fsImpl: flakyFs, retryDelayMs: 1});
+    assert.equal(renameCalls, 3);
+    assert.deepEqual(JSON.parse(fs.readFileSync(target, 'utf8')), {ok: true});
+    assert.equal(fs.readdirSync(tmp).filter(name => name.endsWith('.tmp')).length, 0);
+
+    // Persistent failure must remove .tmp file in finally
+    const failTarget = path.join(tmp, 'fail.json');
+    const alwaysFailFs = {
+      mkdirSync: fs.mkdirSync,
+      writeFileSync: fs.writeFileSync,
+      unlinkSync: fs.unlinkSync,
+      renameSync() {
+        throw Object.assign(new Error('EPERM'), {code: 'EPERM'});
+      }
+    };
+    assert.throws(() => writeJsonAtomicSync(failTarget, {bad: true}, {fsImpl: alwaysFailFs, maxRetries: 2, retryDelayMs: 1}), /EPERM/);
+    assert.equal(fs.readdirSync(tmp).filter(name => name.endsWith('.tmp')).length, 0);
+  } finally {
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
 });
 
 test('diagnostic sanitization redacts personal paths and drops unwhitelisted/keystroke fields', () => {

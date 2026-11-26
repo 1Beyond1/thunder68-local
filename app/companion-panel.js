@@ -247,7 +247,43 @@
       if (action.type === 'open-tool' && action.toolId) {
         shell.activateTool(action.toolId);
       } else if (action.type === 'apply-profile' && action.id) {
-        window.thunder68Profiles?.applyProfileById?.(action.id);
+        const profilesApi = window.thunder68Profiles;
+        const reportResult = payload => {
+          window.thunder68Local?.reportCompanionActionResult?.({
+            requestId: action.requestId || '',
+            type: 'apply-profile',
+            ...payload
+          });
+        };
+        if (!profilesApi?.applyProfileById) {
+          reportResult({stage: 'dispatched', ok: false, error: '配置方案库模块尚未就绪，请打开主窗口重试。'});
+          return;
+        }
+        Promise.resolve(profilesApi.applyProfileById(action.id, {
+          onComplete: finalRes => {
+            reportResult({
+              stage: 'completed',
+              ok: Boolean(finalRes?.ok),
+              outcome: finalRes?.outcome || (finalRes?.ok ? 'success' : 'error'),
+              reason: finalRes?.reason || '',
+              profileName: finalRes?.profileName || '',
+              message: finalRes?.message || ''
+            });
+          }
+        })).then(res => {
+          reportResult({
+            stage: 'dispatched',
+            ok: Boolean(res?.ok),
+            profileName: res?.profileName || '',
+            error: res?.error || ''
+          });
+        }).catch(err => {
+          reportResult({
+            stage: 'dispatched',
+            ok: false,
+            error: err?.message || '触发方案切换失败。'
+          });
+        });
       } else if (action.type === 'preferences-changed' && action.preferences) {
         if (state) state.preferences = action.preferences;
         syncForm();

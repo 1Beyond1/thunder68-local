@@ -19,6 +19,8 @@
   --ui-on-accent: #20270e;
   --ui-selected: #303922;
   --ui-success: #a6d99b;
+  --ui-warning: #f59e0b;
+  --ui-warning-bg: rgba(245, 158, 11, 0.12);
   --ui-error: #ffadb0;
   --ui-danger-bg: #392328;
   --ui-field: #121416;
@@ -42,6 +44,8 @@
   --ui-on-accent: #fff;
   --ui-selected: #eef4e5;
   --ui-success: #2f671f;
+  --ui-warning: #b45309;
+  --ui-warning-bg: #fffbeb;
   --ui-error: #ab2837;
   --ui-danger-bg: #fff0f1;
   --ui-field: #fff;
@@ -416,6 +420,10 @@ a:focus-visible,
 
 .local-operation[data-kind="success"] {
   color: var(--ui-success);
+}
+
+.local-operation[data-kind="warning"] {
+  color: var(--ui-warning);
 }
 
 .local-operation[data-kind="error"] {
@@ -2602,6 +2610,12 @@ body[data-local-page="5"] #root .local-settings-panel > .tab-navigation + div > 
 .local-profiles-banner[data-kind="success"] {
   border-color: var(--ui-success);
   color: var(--ui-success);
+}
+
+.local-profiles-banner[data-kind="warning"] {
+  border-color: var(--ui-warning);
+  background: var(--ui-warning-bg);
+  color: var(--ui-warning);
 }
 
 .local-profiles-banner[data-kind="error"] {

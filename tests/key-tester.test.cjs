@@ -1,6 +1,7 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const keyTester = require('../app/key-tester.js');
+const {OFFICIAL_THUNDER68_KEY_IDS} = require('../app/profile-core.js');
 
 test('self-authored 68-key layout has exactly 68 keys and balanced 16.0u rows', () => {
   assert.equal(keyTester.LAYOUT_68_ROWS.length, 5);
@@ -116,4 +117,47 @@ test('findLiveKeyParam maps KeyboardEvent.code to live Thunder68 keyValues entri
   assert.equal(keyTester.findLiveKeyParam('Escape', keyValues)?.id, 'Esc');
   assert.equal(keyTester.findLiveKeyParam('ShiftLeft', keyValues)?.id, 'LShift');
   assert.equal(keyTester.findLiveKeyParam('UnknownKey', keyValues), null);
+});
+
+test('findLiveKeyParam achieves 100% 1-to-1 match across all 68 official Thunder68 key IDs (67 testable + Fn)', () => {
+  const allLayoutKeys = keyTester.LAYOUT_68_ROWS.flat();
+  const testableKeys = allLayoutKeys.filter(k => !k.hardwareOnly);
+  assert.equal(allLayoutKeys.length, 68);
+  assert.equal(testableKeys.length, 67);
+  assert.equal(OFFICIAL_THUNDER68_KEY_IDS.length, 68);
+
+  const liveKeyValues = OFFICIAL_THUNDER68_KEY_IDS.map((id, idx) => ({
+    id,
+    travelValue: Number((0.1 + (idx % 10) * 0.1).toFixed(2)),
+    isRTEnabled: idx % 2 === 0,
+    sensitivity: 0.05
+  }));
+
+  const matchedIds = new Set();
+  for (const key of allLayoutKeys) {
+    const found = keyTester.findLiveKeyParam(key.code, liveKeyValues);
+    assert.ok(found, `Expected layout key ${key.code} (${key.label}) to match an official Thunder68 key ID`);
+    matchedIds.add(found.id);
+  }
+  assert.equal(matchedIds.size, 68);
+
+  // Explicit assertions for the 12 previously mismatched high-frequency modifier/arrow keys + Arrowup
+  const criticalPairs = [
+    ['CapsLock', 'Caps Lock'],
+    ['ShiftLeft', 'ShiftL'],
+    ['ShiftRight', 'ShiftR'],
+    ['ControlLeft', 'CtrlL'],
+    ['MetaLeft', 'WinL'],
+    ['AltLeft', 'AltL'],
+    ['Space', 'Spacebar'],
+    ['AltRight', 'AltR'],
+    ['ControlRight', 'CtrlR'],
+    ['ArrowUp', 'Arrowup'],
+    ['ArrowLeft', 'ArrowL'],
+    ['ArrowDown', 'ArrowD'],
+    ['ArrowRight', 'ArrowR']
+  ];
+  for (const [code, expectedId] of criticalPairs) {
+    assert.equal(keyTester.findLiveKeyParam(code, liveKeyValues)?.id, expectedId, `${code} -> ${expectedId}`);
+  }
 });

@@ -340,6 +340,21 @@
     const discoveryReason = String(context.discoveryReason || '').trim();
     const combined = `${errorName} ${message}`.toLowerCase();
 
+    if (discoveryReason === 'unsupported-model') {
+      return {
+        code: 'unsupported-model',
+        severity: 'warning',
+        title: '检测到同品牌其他型号，非雷电68 配置接口',
+        summary: '系统枚举到了达尔优（VID 0x369B）的其他型号设备，但未检测到雷电68 的 USB 有线（PID 0x0211）或 2.4G 接收器（PID 0x0434）配置接口。',
+        steps: [
+          '确认接入的是达尔优雷电68 本体（本本地驱动仅适配雷电68，不支持其他型号）。',
+          '若雷电68 当前处于蓝牙模式，WebHID 过滤器仅枚举有线/2.4G 配置接口，请先切换至「USB 有线」或「2.4G 无线」挡位。',
+          '插稳数据线或 2.4G 接收器，轻按任意键唤醒后重新点击「连接键盘」。'
+        ],
+        errorName: errorName || 'UnsupportedModel'
+      };
+    }
+
     if (
       discoveryReason === 'bluetooth-unsupported' ||
       /bluetooth|蓝牙|非配置接口/.test(combined)
@@ -348,7 +363,7 @@
         code: 'bluetooth-unsupported',
         severity: 'warning',
         title: '蓝牙模式不支持 WebHID 配置',
-        summary: '检测到雷电68 或达尔优非配置接口，蓝牙通道无法进行改键、灯光与磁轴行程配置。',
+        summary: '检测到雷电68 非配置接口，蓝牙通道无法进行改键、灯光与磁轴行程配置。',
         steps: [
           '将键盘模式开关切至「USB 有线」或「2.4G 无线」挡位。',
           '插稳数据线或 2.4G 接收器，轻按任意键唤醒键盘。',
@@ -388,7 +403,7 @@
         summary: '系统中未发现雷电68 的 USB 有线（PID 0x0211）或 2.4G 接收器（PID 0x0434）配置接口。',
         steps: [
           '确认 USB-C 数据线插紧且支持数据传输（避免纯充电线）。',
-          '若使用 2.4G 模式，请将接收器直接插在电脑 USB 口并轻按键盘唤醒。',
+          '若键盘当前处于蓝牙模式，WebHID 仅支持 USB 有线或 2.4G 接收器，请先切换模式开关并轻按唤醒键盘。',
           '如刚才在设备选择弹窗中点了「取消」，再次点击「连接键盘」即可。'
         ],
         errorName: errorName || 'NotFoundError'
@@ -431,7 +446,8 @@
   function formatSanitizedRendererReport({meta = {}, discovery = null, stats = {}, devices = [], entries = []} = {}) {
     const redact = text => String(text || '')
       .replace(/([A-Za-z]:\\Users\\)([^\\/:*?"<>|\r\n]+)/gi, '$1<redacted>')
-      .replace(/(\/(?:Users|home)\/)([^/\s]+)/g, '$1<redacted>');
+      .replace(/(\/(?:Users|home)\/)([^/\s]+)/g, '$1<redacted>')
+      .replace(/\b(deviceSN|serialNumber)\s*[:=]\s*["']?[^"'\s,}]+["']?/gi, '$1=<redacted>');
     return JSON.stringify({
       meta: {
         appVersion: String(meta.appVersion || ''),
@@ -627,7 +643,11 @@
   function createSyncScheduler(options = {}) {
     const run = typeof options.run === 'function' ? options.run : () => {};
     const isBusy = typeof options.isBusy === 'function' ? options.isBusy : () => false;
+    const isHidden = typeof options.isHidden === 'function'
+      ? options.isHidden
+      : () => typeof document !== 'undefined' && Boolean(document.hidden);
     const busyIntervalMs = typeof options.busyIntervalMs === 'number' && options.busyIntervalMs >= 0 ? options.busyIntervalMs : 140;
+    const hiddenIntervalMs = typeof options.hiddenIntervalMs === 'number' && options.hiddenIntervalMs >= 0 ? options.hiddenIntervalMs : 250;
     const raf = options.raf || (typeof requestAnimationFrame === 'function' ? fn => requestAnimationFrame(fn) : fn => setTimeout(fn, 16));
     const cancelRaf = options.cancelRaf || (typeof cancelAnimationFrame === 'function' ? id => cancelAnimationFrame(id) : id => clearTimeout(id));
     const setTimer = options.setTimeoutFn || setTimeout;
@@ -651,12 +671,41 @@
       rafId = raf(execute);
     }
 
+    function enqueueHiddenTimer(delay) {
+      if (rafId !== null) {
+        cancelRaf(rafId);
+        rafId = null;
+      }
+      if (timerId !== null) return;
+      timerId = setTimer(() => {
+        timerId = null;
+        execute();
+      }, delay);
+    }
+
     return {
       schedule(opts = {}) {
         const immediate = Boolean(opts && opts.immediate);
         const busy = Boolean(isBusy());
+        const hidden = Boolean(isHidden());
         const exitedBusy = lastBusy && !busy;
         lastBusy = busy;
+
+        // When hidden (e.g. minimized to tray), Chromium pauses rAF; degrade to low-frequency setTimeout.
+        if (hidden) {
+          const elapsed = lastRunAt > 0 ? nowFn() - lastRunAt : hiddenIntervalMs;
+          if (immediate || exitedBusy) {
+            if (timerId !== null) {
+              clearTimer(timerId);
+              timerId = null;
+            }
+            enqueueHiddenTimer(Math.min(16, hiddenIntervalMs));
+            return;
+          }
+          const delay = elapsed >= hiddenIntervalMs ? hiddenIntervalMs : Math.max(16, hiddenIntervalMs - elapsed);
+          enqueueHiddenTimer(delay);
+          return;
+        }
 
         if (immediate || !busy || exitedBusy) {
           if (timerId !== null) {
@@ -681,7 +730,11 @@
         const remaining = Math.max(16, busyIntervalMs - elapsed);
         timerId = setTimer(() => {
           timerId = null;
-          enqueueRaf();
+          if (isHidden()) {
+            execute();
+          } else {
+            enqueueRaf();
+          }
         }, remaining);
       },
       flush() {

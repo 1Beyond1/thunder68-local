@@ -1,8 +1,11 @@
 {
   "name": "thunder68-local",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "license": "MIT",
   "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "description": "Personal offline desktop wrapper for DAREU Thunder68's official WebHID configurator",
   "main": "app/main.cjs",
   "scripts": {

@@ -164,7 +164,7 @@
 
     window.thunder68Local?.onHidDiscovery?.(summary => {
       lastDiscovery = summary;
-      if (summary && summary.reason === 'bluetooth-unsupported' && !deviceOpened && !silentAutoConnect) {
+      if (summary && ['bluetooth-unsupported', 'unsupported-model'].includes(summary.reason) && !deviceOpened && !silentAutoConnect) {
         const info = helpers.classifyConnectionError({discoveryReason: summary.reason});
         renderTroubleshoot(info);
       }
@@ -272,6 +272,7 @@
         const reasonLabels = {
           ready: '已发现可用配置接口',
           'bluetooth-unsupported': '发现非配置接口（疑似蓝牙模式）',
+          'unsupported-model': '发现同厂其他型号（非雷电68）',
           'no-device': '未枚举到雷电68 配置接口'
         };
         discoveryEl.innerHTML = '';
@@ -281,7 +282,7 @@
           ['状态判定', reasonLabels[effectiveDiscovery.reason] || effectiveDiscovery.reason],
           ['系统 HID 总数', String(effectiveDiscovery.totalDevices ?? 0)],
           ['可用配置接口', String(effectiveDiscovery.configCandidatesCount ?? 0)],
-          ['疑似蓝牙/非配置', String(effectiveDiscovery.suspectedBluetoothCount ?? effectiveDiscovery.sameVendorNonConfigCount ?? 0)]
+          ['疑似蓝牙 / 其他同厂', `${effectiveDiscovery.suspectedBluetoothCount ?? 0} / ${effectiveDiscovery.unsupportedSameVendorCount ?? 0}`]
         ]) {
           const item = document.createElement('div');
           item.className = 'local-diag-kv';
@@ -450,6 +451,9 @@
     const connect = options => {
       const silent = Boolean(options && options.silent === true);
       silentAutoConnect = silent;
+      if (!silent) {
+        window.thunder68Local?.clearSilentAutoConnect?.();
+      }
       feedbackLocked = false;
       const container = root.querySelector('.device-container');
       const target = helpers.findDeviceEntry(container);
@@ -753,7 +757,7 @@
       synchronize();
     });
     shell.querySelector('.local-reset-keys').addEventListener('click', () => root.querySelector('.select_menu button')?.click());
-    connectButton.addEventListener('click', connect);
+    connectButton.addEventListener('click', () => connect());
 
     const palette = shell.querySelector('.local-palette');
     const search = palette.querySelector('input');
@@ -835,6 +839,7 @@
     window.addEventListener('thunder68-device-close', () => {
       deviceOpened = false;
       ready = false;
+      silentAutoConnect = false;
       verifyMachine.onLeftConfigOrClosed();
       synchronize();
     });
@@ -1039,10 +1044,75 @@
     const syncScheduler = helpers.createSyncScheduler({
       run: () => synchronize(),
       isBusy: () => Boolean(window.thunder68Presentation?.state()?.config?.mask),
-      busyIntervalMs: 140
+      isHidden: () => Boolean(document.hidden),
+      busyIntervalMs: 140,
+      hiddenIntervalMs: 250
     });
 
+    function reportDeviceStatus(context = null) {
+      const main = context ? context.main : root.querySelector('.main-content');
+      const connectedPage = context ? context.connectedPage : !!main;
+      const state = context ? context.state : window.thunder68Presentation?.state();
+      const sidebarEl = context ? context.sidebarEl : root.querySelector('.sidebar');
+      const busyNow = context ? context.busyNow : Boolean(state?.config?.mask);
+      const reading = context ? context.reading : helpers.isReadingConfig(state?.config ? '' : root.textContent, state);
+      const deviceInfo = context ? context.deviceInfo : helpers.extractDeviceStatusInfo(state, sidebarEl);
+      latestDeviceInfo = deviceInfo;
+
+      if (main && !storeSubscribed && state) {
+        storeSubscribed = true;
+        window.thunder68Presentation.subscribe(() => syncScheduler.schedule());
+      }
+
+      const isEffectivelyConnected = connectedPage && deviceOpened && !reading;
+      const deviceStatusPayload = {
+        connected: isEffectivelyConnected,
+        deviceOpened,
+        reading,
+        busy: busyNow,
+        modeLabel: deviceInfo.modeLabel,
+        isWireless: Boolean(deviceInfo.isWireless),
+        battery: deviceInfo.battery
+      };
+      const deviceStatusKey = JSON.stringify(deviceStatusPayload);
+      if (deviceStatusKey !== lastReportedStatusKey) {
+        lastReportedStatusKey = deviceStatusKey;
+        window.thunder68Local?.reportDeviceStatus?.(deviceStatusPayload);
+      }
+
+      const shellSyncDetail = {
+        connectedPage,
+        deviceOpened,
+        ready,
+        reading,
+        busy: busyNow,
+        activeToolId,
+        deviceInfo
+      };
+      const shellSyncKey = JSON.stringify(shellSyncDetail);
+      if (shellSyncKey !== lastShellSyncKey) {
+        lastShellSyncKey = shellSyncKey;
+        window.dispatchEvent(new CustomEvent('thunder68-shell-sync', {detail: shellSyncDetail}));
+      }
+      return {isEffectivelyConnected, deviceInfo};
+    }
+
     function synchronize() {
+      // Lightweight hidden-window path: keep 2.4G battery alerts & busy state synced without heavy DOM layout reads.
+      if (document.hidden) {
+        domDirty = true;
+        const main = root.querySelector('.main-content');
+        const connectedPage = !!main;
+        const state = window.thunder68Presentation?.state();
+        const busyNow = Boolean(state?.config?.mask);
+        const reading = helpers.isReadingConfig(state?.config ? '' : root.textContent, state);
+        const deviceInfo = helpers.extractDeviceStatusInfo(state, root.querySelector('.sidebar'));
+        reportDeviceStatus({main, connectedPage, state, sidebarEl: null, busyNow, reading, deviceInfo});
+        wasConnectedPage = connectedPage;
+        wasBusy = busyNow;
+        return;
+      }
+
       const main = root.querySelector('.main-content');
       const connectedPage = !!main;
       const state = window.thunder68Presentation?.state();
@@ -1062,6 +1132,10 @@
       document.body.classList.toggle('local-modal-open', modalVisible);
 
       if (modalVisible) {
+        if (silentAutoConnect) {
+          silentAutoConnect = false;
+          window.thunder68Local?.clearSilentAutoConnect?.();
+        }
         clearTimeout(connectionTimer);
         connectButton.disabled = false;
       }
@@ -1399,8 +1473,17 @@
         parameterCanvas.setAttribute('hidden', '');
       }
 
+      const {isEffectivelyConnected} = reportDeviceStatus({
+        main,
+        connectedPage,
+        state,
+        sidebarEl,
+        busyNow,
+        reading,
+        deviceInfo
+      });
+
       const status = shell.querySelector('.local-status');
-      const isEffectivelyConnected = connectedPage && deviceOpened && !reading;
       status.classList.toggle('is-connected', isEffectivelyConnected);
       const batBadge = deviceInfo.battery !== null ? ` · ${deviceInfo.battery}%` : '';
       const receivedDelta = Math.max(0, (window.thunder68DesktopDiag?.stats?.().received || 0) - readStartFrames);
@@ -1413,39 +1496,14 @@
       const statusSpan = status.querySelector('span');
       if (statusSpan.textContent !== nextStatusText) statusSpan.textContent = nextStatusText;
 
-      const deviceStatusPayload = {
-        connected: isEffectivelyConnected,
-        deviceOpened,
-        reading,
-        busy: busyNow,
-        modeLabel: deviceInfo.modeLabel,
-        isWireless: Boolean(deviceInfo.isWireless),
-        battery: deviceInfo.battery
-      };
-      const deviceStatusKey = JSON.stringify(deviceStatusPayload);
-      if (deviceStatusKey !== lastReportedStatusKey) {
-        lastReportedStatusKey = deviceStatusKey;
-        window.thunder68Local?.reportDeviceStatus?.(deviceStatusPayload);
-      }
-
-      const shellSyncDetail = {
-        connectedPage,
-        deviceOpened,
-        ready,
-        reading,
-        busy: busyNow,
-        activeToolId,
-        deviceInfo
-      };
-      const shellSyncKey = JSON.stringify(shellSyncDetail);
-      if (shellSyncKey !== lastShellSyncKey) {
-        lastShellSyncKey = shellSyncKey;
-        window.dispatchEvent(new CustomEvent('thunder68-shell-sync', {detail: shellSyncDetail}));
-      }
-
       wasConnectedPage = connectedPage;
       wasBusy = busyNow;
     }
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) domDirty = true;
+      syncScheduler.schedule({immediate: true});
+    });
 
     mutationObserver = new MutationObserver(() => {
       if (isClassifying) return;
@@ -1465,14 +1523,32 @@
       if (!diagDrawer.hidden) refreshDiagnostics();
     });
 
-    navigator.hid?.addEventListener('disconnect', () => {
+    navigator.hid?.addEventListener('disconnect', async () => {
+      let stillOpened = false;
+      try {
+        stillOpened = (await navigator.hid.getDevices()).some(d => d.opened && d.vendorId === 0x369b);
+      } catch {
+        stillOpened = false;
+      }
+      if (stillOpened) {
+        if (!diagDrawer.hidden) refreshDiagnostics();
+        return;
+      }
+      const wasActive = deviceOpened || connectButton.disabled || Boolean(root.querySelector('.main-content'));
       deviceOpened = false;
       ready = false;
-      feedbackLocked = true;
+      silentAutoConnect = false;
+      window.thunder68Local?.clearSilentAutoConnect?.();
+      clearTimeout(connectionTimer);
+      connectionTimer = null;
+      connectButton.disabled = false;
       hideHotplugBanner();
       verifyMachine.onLeftConfigOrClosed();
-      feedback('键盘已断开。重新插入 USB 或检查 2.4G 连接，然后返回“我的设备”重连。', 'error');
-      refreshDevice();
+      if (wasActive) {
+        feedbackLocked = true;
+        feedback('键盘已断开。重新插入 USB 或检查 2.4G 连接，然后返回“我的设备”重连。', 'error');
+      }
+      synchronize();
       if (!diagDrawer.hidden) refreshDiagnostics();
     });
 
@@ -1490,7 +1566,12 @@
       }),
       feedback,
       connect,
-      canPreload: () => !deviceOpened && !root.querySelector('.main-content') && !activeToolId && Boolean(helpers.findDeviceEntry(root.querySelector('.device-container'))),
+      canPreload: () => !deviceOpened
+        && !connectButton.disabled
+        && !root.querySelector('.main-content')
+        && !root.querySelector('.sidebar .modal-overlay')
+        && !activeToolId
+        && Boolean(helpers.findDeviceEntry(root.querySelector('.device-container'))),
       triggerVerify: () => verify.click(),
       openDiagnostics,
       setThemeChoice,

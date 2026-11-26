@@ -192,8 +192,27 @@ module.exports = async function redesignAudit(mainWindow, output) {
     }
 
     await evaluate(`window.dispatchEvent(new CustomEvent('thunder68-feedback',{detail:{event:'hid-send-error',message:'simulated audit error'}}))`);
-    const errorFeedback = await evaluate('({kind:document.querySelector(".local-operation").dataset.kind,text:document.querySelector(".local-operation").textContent})');
-    check('simulated failure has recovery instruction', errorFeedback.kind === 'error' && errorFeedback.text.includes('USB') && errorFeedback.text.includes('重新连接'), {...errorFeedback, simulated: true});
+    const errorFeedback = await evaluate(`(() => {
+      const op = document.querySelector('.local-operation');
+      const card = document.querySelector('.local-troubleshoot-card');
+      return {
+        kind: op?.dataset.kind || '',
+        text: op?.textContent || '',
+        cardVisible: Boolean(card && !card.hidden),
+        cardCode: card?.dataset.code || '',
+        cardText: card?.textContent || ''
+      };
+    })()`);
+    check(
+      'simulated failure has recovery instruction',
+      errorFeedback.kind === 'error'
+        && errorFeedback.text.includes('HID 通信失败')
+        && errorFeedback.cardVisible
+        && errorFeedback.cardCode === 'hid-comm-failed'
+        && errorFeedback.cardText.includes('USB')
+        && errorFeedback.cardText.includes('重新拔插'),
+      {...errorFeedback, simulated: true}
+    );
     await capture('redesign-simulated-error.png');
 
     // The device-list view is real navigation. Reconnection only re-reads configuration.

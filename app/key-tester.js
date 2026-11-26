@@ -47,7 +47,7 @@
       {code: 'Delete', label: 'Del', u: 1, aliases: ['Del', 'Delete']}
     ],
     [
-      {code: 'CapsLock', label: 'Caps', u: 1.75, aliases: ['Caps', 'CapsLock']},
+      {code: 'CapsLock', label: 'Caps', u: 1.75, aliases: ['Caps', 'CapsLock', 'Caps Lock']},
       {code: 'KeyA', label: 'A', u: 1, aliases: ['A']},
       {code: 'KeyS', label: 'S', u: 1, aliases: ['S']},
       {code: 'KeyD', label: 'D', u: 1, aliases: ['D']},
@@ -63,7 +63,7 @@
       {code: 'PageUp', label: 'PgUp', u: 1, aliases: ['PgUp', 'PageUp']}
     ],
     [
-      {code: 'ShiftLeft', label: 'LShift', u: 2.25, aliases: ['LShift', 'Shift_L', 'Shift']},
+      {code: 'ShiftLeft', label: 'LShift', u: 2.25, aliases: ['LShift', 'Shift_L', 'Shift', 'ShiftL']},
       {code: 'KeyZ', label: 'Z', u: 1, aliases: ['Z']},
       {code: 'KeyX', label: 'X', u: 1, aliases: ['X']},
       {code: 'KeyC', label: 'C', u: 1, aliases: ['C']},
@@ -74,21 +74,21 @@
       {code: 'Comma', label: ',', u: 1, aliases: [',', '<,']},
       {code: 'Period', label: '.', u: 1, aliases: ['.', '>.']},
       {code: 'Slash', label: '/', u: 1, aliases: ['/', '?/']},
-      {code: 'ShiftRight', label: 'RShift', u: 1.75, aliases: ['RShift', 'Shift_R']},
-      {code: 'ArrowUp', label: '↑', u: 1, aliases: ['Up', '↑', 'ArrowUp']},
+      {code: 'ShiftRight', label: 'RShift', u: 1.75, aliases: ['RShift', 'Shift_R', 'ShiftR']},
+      {code: 'ArrowUp', label: '↑', u: 1, aliases: ['Up', '↑', 'ArrowUp', 'Arrowup']},
       {code: 'PageDown', label: 'PgDn', u: 1, aliases: ['PgDn', 'PageDown']}
     ],
     [
-      {code: 'ControlLeft', label: 'LCtrl', u: 1.25, aliases: ['LCtrl', 'Ctrl_L', 'Ctrl']},
-      {code: 'MetaLeft', label: 'Win', u: 1.25, aliases: ['LWin', 'Win', 'Win_L']},
-      {code: 'AltLeft', label: 'LAlt', u: 1.25, aliases: ['LAlt', 'Alt_L', 'Alt']},
-      {code: 'Space', label: 'Space', u: 6.25, aliases: ['Space']},
-      {code: 'AltRight', label: 'RAlt', u: 1, aliases: ['RAlt', 'Alt_R']},
+      {code: 'ControlLeft', label: 'LCtrl', u: 1.25, aliases: ['LCtrl', 'Ctrl_L', 'Ctrl', 'CtrlL']},
+      {code: 'MetaLeft', label: 'Win', u: 1.25, aliases: ['LWin', 'Win', 'Win_L', 'WinL']},
+      {code: 'AltLeft', label: 'LAlt', u: 1.25, aliases: ['LAlt', 'Alt_L', 'Alt', 'AltL']},
+      {code: 'Space', label: 'Space', u: 6.25, aliases: ['Space', 'Spacebar']},
+      {code: 'AltRight', label: 'RAlt', u: 1, aliases: ['RAlt', 'Alt_R', 'AltR']},
       {code: 'Fn', label: 'Fn', u: 1, aliases: ['Fn'], hardwareOnly: true},
-      {code: 'ControlRight', label: 'RCtrl', u: 1, aliases: ['RCtrl', 'Ctrl_R']},
-      {code: 'ArrowLeft', label: '←', u: 1, aliases: ['Left', '←', 'ArrowLeft']},
-      {code: 'ArrowDown', label: '↓', u: 1, aliases: ['Down', '↓', 'ArrowDown']},
-      {code: 'ArrowRight', label: '→', u: 1, aliases: ['Right', '→', 'ArrowRight']}
+      {code: 'ControlRight', label: 'RCtrl', u: 1, aliases: ['RCtrl', 'Ctrl_R', 'CtrlR']},
+      {code: 'ArrowLeft', label: '←', u: 1, aliases: ['Left', '←', 'ArrowLeft', 'ArrowL']},
+      {code: 'ArrowDown', label: '↓', u: 1, aliases: ['Down', '↓', 'ArrowDown', 'ArrowD']},
+      {code: 'ArrowRight', label: '→', u: 1, aliases: ['Right', '→', 'ArrowRight', 'ArrowR']}
     ]
   ]);
 
@@ -730,8 +730,9 @@
         mountEl.querySelector('.local-kt-prevent-toggle').addEventListener('change', e => {
           suppressBrowserKeys = e.currentTarget.checked;
         });
-        mountEl.querySelector('.local-kt-reset-btn').addEventListener('click', () => {
+        mountEl.querySelector('.local-kt-reset-btn').addEventListener('click', e => {
           engine.reset();
+          e.currentTarget?.blur?.();
           updateUI();
         });
         updateUI();

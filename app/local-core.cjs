@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const profileCore = require('./profile-core.js');
 
 const LOCAL_ORIGIN = 'thunder68://driver';
@@ -46,9 +47,16 @@ function isSuspectedBluetoothThunder68(device) {
   const looksLikeThunder = /thunder\s*68|雷电\s*68/i.test(name);
   const looksLikeBt = /\b(?:bt|ble|bluetooth)\b|蓝牙/i.test(name);
   if (looksLikeThunder) return true;
+  if (isKeyboard(device)) return true;
   if (device.vendorId === SUPPORTED_VENDOR_ID && looksLikeBt) return true;
-  if (device.vendorId === SUPPORTED_VENDOR_ID && !isKeyboard(device)) return true;
   return false;
+}
+
+function isUnsupportedSameVendorModel(device) {
+  if (!device || device.vendorId !== SUPPORTED_VENDOR_ID) return false;
+  if (isKeyboard(device)) return false;
+  if (isSuspectedBluetoothThunder68(device)) return false;
+  return true;
 }
 
 function classifyHidDiscovery(deviceList) {
@@ -56,12 +64,15 @@ function classifyHidDiscovery(deviceList) {
   const configCandidates = list.filter(isConfigInterface);
   const sameVendorNonConfig = list.filter(d => d?.vendorId === SUPPORTED_VENDOR_ID && !isConfigInterface(d));
   const suspectedBluetooth = list.filter(isSuspectedBluetoothThunder68);
+  const unsupportedSameVendor = list.filter(isUnsupportedSameVendorModel);
 
   let reason = 'no-device';
   if (configCandidates.length > 0) {
     reason = 'ready';
-  } else if (suspectedBluetooth.length > 0 || sameVendorNonConfig.length > 0) {
+  } else if (suspectedBluetooth.length > 0) {
     reason = 'bluetooth-unsupported';
+  } else if (unsupportedSameVendor.length > 0) {
+    reason = 'unsupported-model';
   }
 
   return {
@@ -70,6 +81,7 @@ function classifyHidDiscovery(deviceList) {
     configCandidatesCount: configCandidates.length,
     sameVendorNonConfigCount: sameVendorNonConfig.length,
     suspectedBluetoothCount: suspectedBluetooth.length,
+    unsupportedSameVendorCount: unsupportedSameVendor.length,
     reason,
     candidates: configCandidates.map(d => ({
       name: String(d?.name || d?.productName || 'THUNDER 68').trim().slice(0, 64) || 'THUNDER 68',
@@ -171,6 +183,17 @@ function isAllowedRequestUrl(rawUrl) {
   return rawUrl.startsWith(LOCAL_ORIGIN + '/') || /^(data|blob):/.test(rawUrl);
 }
 
+function validateDecodedVendorPath(root, pathname) {
+  if (typeof pathname !== 'string' || !pathname) return null;
+  if (!pathname.startsWith('/thunder68/') && pathname !== '/thunder68') return null;
+  if (pathname.includes('\\') || pathname.includes('\0')) return null;
+  const segments = pathname.split('/');
+  if (segments.some(seg => seg === '..' || seg === '.')) return null;
+  const file = path.resolve(root, '.' + pathname);
+  const relative = path.relative(root, file);
+  return relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? file : null;
+}
+
 function validateVendorPath(root, urlPath) {
   if (typeof urlPath !== 'string' || !urlPath) return null;
   let pathname;
@@ -179,13 +202,7 @@ function validateVendorPath(root, urlPath) {
   } catch {
     return null;
   }
-  if (!pathname.startsWith('/thunder68/') && pathname !== '/thunder68') return null;
-  if (pathname.includes('\\') || pathname.includes('\0')) return null;
-  const segments = pathname.split('/');
-  if (segments.some(seg => seg === '..' || seg === '.')) return null;
-  const file = path.resolve(root, '.' + pathname);
-  const relative = path.relative(root, file);
-  return relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? file : null;
+  return validateDecodedVendorPath(root, pathname);
 }
 
 function resolveAsset(root, rawUrl) {
@@ -205,7 +222,7 @@ function resolveAsset(root, rawUrl) {
   if (pathname === '/thunder68' || pathname === '/thunder68/' || pathname.startsWith('/thunder68/index/')) {
     pathname = '/thunder68/index.html';
   }
-  return validateVendorPath(root, pathname);
+  return validateDecodedVendorPath(root, pathname);
 }
 
 function getContentType(filePath) {
@@ -274,11 +291,51 @@ function resolveProfileFilePath(profilesDir, id) {
   return candidate;
 }
 
-function writeJsonAtomicSync(filePath, data) {
-  fs.mkdirSync(path.dirname(filePath), {recursive: true});
-  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf8');
-  fs.renameSync(tmpPath, filePath);
+function sleepSyncMs(ms) {
+  if (ms <= 0) return;
+  try {
+    if (typeof SharedArrayBuffer === 'function' && typeof Atomics?.wait === 'function') {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+      return;
+    }
+  } catch {}
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    // Brief fallback wait when SharedArrayBuffer is unavailable
+  }
+}
+
+function writeJsonAtomicSync(filePath, data, options = {}) {
+  const fsImpl = options.fsImpl || fs;
+  const maxRetries = typeof options.maxRetries === 'number' && options.maxRetries >= 1 ? options.maxRetries : 4;
+  const retryDelayMs = typeof options.retryDelayMs === 'number' && options.retryDelayMs >= 0 ? options.retryDelayMs : 25;
+  fsImpl.mkdirSync(path.dirname(filePath), {recursive: true});
+  const rand = crypto.randomBytes(6).toString('hex');
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.${rand}.tmp`;
+  let renamed = false;
+  try {
+    fsImpl.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf8');
+    let lastError = null;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        fsImpl.renameSync(tmpPath, filePath);
+        renamed = true;
+        return;
+      } catch (error) {
+        lastError = error;
+        const transient = error && ['EPERM', 'EBUSY', 'EACCES'].includes(error.code);
+        if (!transient || attempt === maxRetries - 1) throw error;
+        sleepSyncMs(retryDelayMs * (attempt + 1));
+      }
+    }
+    if (lastError) throw lastError;
+  } finally {
+    if (!renamed) {
+      try {
+        fsImpl.unlinkSync(tmpPath);
+      } catch {}
+    }
+  }
 }
 
 function listProfileSummaries(profilesDir) {
@@ -638,6 +695,7 @@ module.exports = {
   isKeyboard,
   isConfigInterface,
   isSuspectedBluetoothThunder68,
+  isUnsupportedSameVendorModel,
   classifyHidDiscovery,
   redactSensitiveText,
   sanitizeDiagnosticEntry,

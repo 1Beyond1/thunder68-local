@@ -73,7 +73,8 @@
       return full?.config || null;
     }
 
-    async function applyProfileById(id) {
+    async function applyProfileById(id, options = {}) {
+      const onComplete = typeof options?.onComplete === 'function' ? options.onComplete : null;
       if (applying) {
         const msg = '正在应用方案中，请等待当前写入完成。';
         shell.feedback(msg, 'error');
@@ -81,7 +82,8 @@
         return {ok: false, error: msg};
       }
       const status = shell.getStatus();
-      const liveConfig = getLiveConfig();
+      const liveState = window.thunder68Presentation?.state?.();
+      const liveConfig = liveState?.config || null;
       if (!status.deviceOpened || !liveConfig) {
         const msg = '请先连接雷电68 并读取完当前 68 键配置后再应用方案。';
         shell.feedback(msg, 'error');
@@ -109,7 +111,13 @@
         return {ok: false, error: msg};
       }
 
-      const validation = core.validateProfileConfig(full.config);
+      const liveKeyIds = Array.isArray(liveState?.common?.deviceParams?.layoutMappingData)
+        ? liveState.common.deviceParams.layoutMappingData.map(item => item?.id).filter(Boolean)
+        : [];
+      const validation = core.validateProfileConfig(
+        full.config,
+        liveKeyIds.length ? {allowedKeyIds: liveKeyIds} : undefined
+      );
       if (!validation.valid) {
         const msg = `方案校验未通过：${validation.errors.join('；')}`;
         shell.feedback(msg, 'error');
@@ -150,7 +158,126 @@
         }
       }
 
-      // Step 2: Build official-compatible payload and trigger native #fileInput -> USER_IMPORT_WHOLE_CONFIG.
+      // Step 2: Arm HID write telemetry & disconnect/error monitors BEFORE dispatching #fileInput.
+      const baselineSent = window.thunder68DesktopDiag?.stats?.().sent || 0;
+      const startedAt = Date.now();
+      let sawMask = false;
+      let sendError = '';
+      let disconnected = false;
+      let finished = false;
+      let unsubStore = null;
+
+      const onFeedbackEvent = ev => {
+        const detail = ev?.detail;
+        if (!detail) return;
+        if (detail.event === 'hid-send-error' || detail.event === 'hid-open-error') {
+          sendError = detail.message || detail.errorName || 'HID 写入通信报错';
+          checkProgress();
+        } else if (detail.event === 'hid-close') {
+          disconnected = true;
+          checkProgress();
+        }
+      };
+      const onDeviceClose = () => {
+        disconnected = true;
+        checkProgress();
+      };
+      const cleanupMonitors = () => {
+        clearInterval(applyWatchTimer);
+        applyWatchTimer = null;
+        window.removeEventListener('thunder68-feedback', onFeedbackEvent);
+        window.removeEventListener('thunder68-device-close', onDeviceClose);
+        if (typeof unsubStore === 'function') {
+          try { unsubStore(); } catch {}
+          unsubStore = null;
+        }
+      };
+
+      const finishApply = (outcome, message, {showVerify = false, footerText = message, reason = outcome} = {}) => {
+        if (finished) return;
+        finished = true;
+        cleanupMonitors();
+        applying = false;
+        updateConnectDependentUi();
+        refresh();
+        shell.feedback(footerText, outcome);
+        setBanner(outcome, message, showVerify);
+        window.thunder68Local?.diagnostic?.({
+          event: 'profile-apply-result',
+          name: full.id,
+          reason,
+          count: Math.max(0, (window.thunder68DesktopDiag?.stats?.().sent || 0) - baselineSent)
+        });
+        if (onComplete) {
+          try {
+            onComplete({ok: outcome === 'success', outcome, reason, profileName: full.name, message});
+          } catch {}
+        }
+      };
+
+      const checkProgress = () => {
+        if (finished) return;
+        const cfg = getLiveConfig();
+        const busy = Boolean(cfg?.mask);
+        if (busy) sawMask = true;
+        const currentStatus = shell.getStatus();
+        if (!currentStatus.deviceOpened) disconnected = true;
+        const sentDelta = Math.max(0, (window.thunder68DesktopDiag?.stats?.().sent || 0) - baselineSent);
+        const elapsedMs = Date.now() - startedAt;
+
+        const evaluation = core.evaluateProfileApplyState({
+          elapsedMs,
+          sawMask,
+          busy,
+          sentDelta,
+          deviceOpened: currentStatus.deviceOpened,
+          sendError,
+          disconnected
+        });
+        if (!evaluation.done) return;
+
+        if (evaluation.outcome === 'success') {
+          const doneMsg = `方案「${full.name}」已通过官方整机导入通道下发（共发送 ${sentDelta} 帧）。建议点击「重新读取核对」确认固件实际生效值。`;
+          finishApply('success', doneMsg, {
+            showVerify: true,
+            footerText: `方案「${full.name}」已写入（${sentDelta} 帧） · 建议点击「重新读取核对」`,
+            reason: evaluation.reason
+          });
+        } else if (evaluation.outcome === 'warning') {
+          const warnMsg = `方案「${full.name}」下发超时未确认（已发送 ${sentDelta} 帧，尚未收到硬件解锁信号）。请勿反复点击写入，待设备稳定后再手动核对或恢复自动回滚快照。`;
+          finishApply('warning', warnMsg, {
+            showVerify: false,
+            footerText: `方案「${full.name}」写入超时未确认（${sentDelta} 帧），请谨慎检查设备状态`,
+            reason: evaluation.reason
+          });
+        } else {
+          let errMsg;
+          if (evaluation.reason === 'disconnected') {
+            errMsg = `写入方案「${full.name}」期间设备断开连接（已发送 ${sentDelta} 帧），配置可能仅部分写入！请重新连接键盘后检查当前参数或恢复自动回滚快照。`;
+          } else if (evaluation.reason === 'hid-send-error') {
+            errMsg = `写入方案「${full.name}」时 HID 发包失败（${sendError}），配置可能未完整生效！请检查连接后手动核对或恢复自动回滚快照。`;
+          } else {
+            errMsg = `方案「${full.name}」未能启动写入（已发送 ${sentDelta} 帧），请确认键盘已连接并处于配置界面后重试。`;
+          }
+          finishApply('error', errMsg, {
+            showVerify: false,
+            footerText: `方案「${full.name}」写入失败或中断，请检查连接并使用回滚快照`,
+            reason: evaluation.reason
+          });
+        }
+      };
+
+      window.addEventListener('thunder68-feedback', onFeedbackEvent);
+      window.addEventListener('thunder68-device-close', onDeviceClose);
+      if (typeof window.thunder68Presentation?.subscribe === 'function') {
+        try {
+          unsubStore = window.thunder68Presentation.subscribe(() => {
+            if (getLiveConfig()?.mask) sawMask = true;
+          });
+        } catch {}
+      }
+
+      // Step 3: Build official-compatible payload (preserving mask: true) and trigger native #fileInput.
       try {
         const payload = core.buildOfficialImportPayload(full.config, liveConfig);
         const file = new File(
@@ -163,6 +290,7 @@
         fileInput.files = dt.files;
         fileInput.dispatchEvent(new Event('change', {bubbles: true}));
       } catch (error) {
+        cleanupMonitors();
         applying = false;
         updateConnectDependentUi();
         const msg = `触发官方导入通道失败：${error.message}`;
@@ -173,27 +301,9 @@
 
       window.thunder68Local?.diagnostic?.({event: 'profile-apply-dispatched', name: full.id});
 
-      // Step 3: Wait until official config.mask settles (or short settle delay) then guide re-read verify.
+      // Step 4: Watch HID packet delta, mask lifecycle, disconnect & hid-send-error until confirmed/warn/error.
       clearInterval(applyWatchTimer);
-      const startedAt = Date.now();
-      let sawMask = false;
-      applyWatchTimer = setInterval(() => {
-        const cfg = getLiveConfig();
-        const busy = Boolean(cfg?.mask);
-        if (busy) sawMask = true;
-        const elapsed = Date.now() - startedAt;
-        const settled = (sawMask && !busy && elapsed > 800) || (!sawMask && elapsed > 2200) || elapsed > 20000;
-        if (settled) {
-          clearInterval(applyWatchTimer);
-          applyWatchTimer = null;
-          applying = false;
-          updateConnectDependentUi();
-          refresh();
-          const doneMsg = `方案「${full.name}」已通过官方整机导入通道下发。建议立即点击「重新读取核对」确认固件实际生效值。`;
-          shell.feedback(`方案「${full.name}」已写入 · 建议点击「重新读取核对」`, 'success');
-          setBanner('success', doneMsg, true);
-        }
-      }, 250);
+      applyWatchTimer = setInterval(checkProgress, 250);
 
       return {ok: true, profileName: full.name};
     }
@@ -314,6 +424,12 @@
         '宏定义差异',
         diff.macroChanges.map(item => [item.name, `${item.fromActions} 步`, `${item.toActions} 步`]),
         ['宏槽位', '方案 A', '方案 B']
+      );
+
+      addSection(
+        '系统与触发模式差异',
+        (diff.settingsChanges || []).map(item => [item.label, String(item.from ?? '--'), String(item.to ?? '--')]),
+        ['设置项', '方案 A', '方案 B']
       );
     }
 

@@ -319,14 +319,19 @@ test('createVerifyStateMachine prevents stale redux-persist false positives and 
   assert.equal(vm.getState().phase, 'idle');
 });
 
-test('classifyConnectionError separates all 4 troubleshooting categories accurately', () => {
+test('classifyConnectionError separates troubleshooting categories including unsupported-model', () => {
   const noDev = helpers.classifyConnectionError({event: 'hid-request-result', count: 0, discoveryReason: 'no-device'});
   assert.equal(noDev.code, 'no-device');
   assert.ok(noDev.steps.length >= 2);
+  assert.match(noDev.steps.join(' '), /蓝牙/);
 
   const bt = helpers.classifyConnectionError({event: 'hid-request-result', count: 0, discoveryReason: 'bluetooth-unsupported'});
   assert.equal(bt.code, 'bluetooth-unsupported');
   assert.match(bt.title, /蓝牙/);
+
+  const otherModel = helpers.classifyConnectionError({event: 'hid-request-result', count: 0, discoveryReason: 'unsupported-model'});
+  assert.equal(otherModel.code, 'unsupported-model');
+  assert.match(otherModel.title, /其他型号/);
 
   const busyByName = helpers.classifyConnectionError({event: 'hid-open-error', errorName: 'NotAllowedError', message: 'Failed to open the device.'});
   assert.equal(busyByName.code, 'device-busy');
@@ -341,6 +346,19 @@ test('classifyConnectionError separates all 4 troubleshooting categories accurat
   const timeoutErr = helpers.classifyConnectionError({timeout: true});
   assert.equal(timeoutErr.code, 'hid-comm-failed');
   assert.match(timeoutErr.title, /超时/);
+});
+
+test('formatSanitizedRendererReport redacts personal paths, deviceSN, and serialNumber', () => {
+  const text = helpers.formatSanitizedRendererReport({
+    meta: {appVersion: '0.2.2', dataDir: 'C:\\Users\\Alice\\data'},
+    entries: [{event: 'hid-open-error', message: 'failed deviceSN=SN123456 serialNumber:ABC-999 /home/bob/x'}]
+  });
+  assert.equal(text.includes('Alice'), false);
+  assert.equal(text.includes('bob'), false);
+  assert.equal(text.includes('SN123456'), false);
+  assert.equal(text.includes('ABC-999'), false);
+  assert.match(text, /deviceSN=<redacted>/);
+  assert.match(text, /serialNumber=<redacted>/);
 });
 
 test('isSupportedHotplugDevice and getTravelBadgePalette validate hotplug devices and theme contrast', () => {
@@ -422,6 +440,63 @@ test('createSyncScheduler coalesces frame bursts, throttles during busy readback
   assert.equal(rafQueue.filter(entry => entry.active).length, 1);
   rafQueue.pop().fn();
   assert.equal(runs, 3);
+});
+
+test('createSyncScheduler degrades to low-frequency setTimeout when hidden so tray sync never freezes', () => {
+  let now = 2000;
+  let hidden = false;
+  let runs = 0;
+  let seq = 1;
+  const rafQueue = [];
+  const timers = [];
+
+  const scheduler = helpers.createSyncScheduler({
+    run: () => { runs++; },
+    isBusy: () => false,
+    isHidden: () => hidden,
+    hiddenIntervalMs: 250,
+    now: () => now,
+    raf: fn => {
+      const id = seq++;
+      rafQueue.push({id, fn, active: true});
+      return id;
+    },
+    cancelRaf: id => {
+      const item = rafQueue.find(entry => entry.id === id);
+      if (item) item.active = false;
+    },
+    setTimeoutFn: (fn, delay) => {
+      const id = seq++;
+      timers.push({id, fn, delay, active: true});
+      return id;
+    },
+    clearTimeoutFn: id => {
+      const item = timers.find(entry => entry.id === id);
+      if (item) item.active = false;
+    }
+  });
+
+  // Schedule while visible -> queues rAF
+  scheduler.schedule();
+  assert.equal(rafQueue.filter(entry => entry.active).length, 1);
+
+  // Minimize to tray (hidden = true) -> cancels stalled rAF and degrades to setTimeout
+  hidden = true;
+  scheduler.schedule();
+  assert.equal(rafQueue.filter(entry => entry.active).length, 0);
+  assert.equal(timers.filter(entry => entry.active).length, 1);
+  assert.equal(timers[0].delay, 250);
+
+  // Burst while hidden coalesces into the single timer
+  for (let i = 0; i < 10; i++) scheduler.schedule();
+  assert.equal(timers.filter(entry => entry.active).length, 1);
+  assert.equal(rafQueue.filter(entry => entry.active).length, 0);
+
+  // Timer fires directly without needing rAF -> runs updates (battery alert & busy state!)
+  now = 2250;
+  timers[0].active = false;
+  timers[0].fn();
+  assert.equal(runs, 1);
 });
 
 test('formatReadProgressText reports live HID frame progress cleanly', () => {

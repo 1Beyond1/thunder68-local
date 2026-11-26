@@ -21,7 +21,7 @@ A personal offline Electron desktop companion wrapper for the official DAREU Thu
 1. Double-click `release/Thunder68-Local/Thunder68-Local.exe`. Keep the folder intact (move it to a fixed directory before enabling auto-launch; no Node.js, browser, or internet connection required).
 2. Connect your Thunder68 via **USB cable** or **2.4G wireless dongle**, then click **Connect Keyboard (连接键盘)**.
    - **Hot-Plug Auto-Detection**: Plugging in or waking a Thunder68 while disconnected shows a non-intrusive floating bar with one-click reconnect (never hijacking an active session).
-   - **4-Category Precision Troubleshooting**: Connection issues are classified into *No Device Detected / Bluetooth Mode Unsupported / Handle Occupied by Web Configurator or Another Process / HID Communication Failed* with tailored steps, plus a slide-over **Diagnostics Center (连接诊断)** with one-click sanitized report copy.
+   - **Precision Troubleshooting**: Connection issues are classified into *No Device Detected / Bluetooth Mode Unsupported / Unsupported Same-Vendor Model / Handle Occupied by Web Configurator or Another Process / HID Communication Failed* with tailored steps, plus a slide-over **Diagnostics Center (连接诊断)** with one-click sanitized report copy.
    - **Multi-Device & 2.4G Support**: Multiple Thunder68 interfaces open a clear picker dialog; 2.4G pairing modals stay centered and connection mode + 2.4G battery percentage appear in the sidebar, header, and tray menu.
 3. Use the official configuration pages or the **Companion Tools (伴侣工具)** in the left rail:
    - **Local Profile Library (配置方案库)**: Capture clean 68-key snapshots (volatile runtime fields stripped) with names and scene tags (e.g. FPS / Office), import/export JSON, inspect travel/RT/remap/lighting/superkey/macro Diffs, and apply via the official native `#fileInput` (`USER_IMPORT_WHOLE_CONFIG`) channel after 68-key range validation, `config.mask` concurrency guard, and automatic pre-write rollback snapshot creation.
@@ -47,7 +47,7 @@ Local profiles, preferences, and logs are stored in `data/` beside the executabl
   - Persists theme & multi-monitor validated window bounds in `data/preferences.json`, applying matching window chrome & initial `data-theme` before first paint to eliminate dark flash in light mode.
   - Self-authored minimalist tray/window icon, tray quick-switch menu, minimize-to-tray, optional `--minimized` login start (with fixed-directory notice for portable builds), global shortcuts, and 2.4G low-battery hysteresis alerts.
 - **Clean-Clone CI & Slimmed Portable Build**:
-  - Decouples vendor hash tests (`npm run test:vendor`) from `npm test` so clean clones without `app/vendor/` pass 100%; GitHub Actions runs Windows Node 20/22 CI with a static compliance guard (`npm run check:compliance`).
+  - Decouples vendor hash tests (`npm run test:vendor`) from `npm test` so clean clones without `app/vendor/` pass 100%; GitHub Actions runs Windows Node 22 CI (aligned with Electron 44's `Node >= 22.12.0` requirement) with a static compliance guard (`npm run check:compliance`).
   - `npm run build` prunes 53 unnecessary Chromium `locales/*.pak` files (keeping `zh-CN.pak` and `en-US.pak`), cutting a clean portable build from `374.00 MiB` to `326.83 MiB` (**47.17 MiB saved**) while preserving all `LICENSE*` / `THIRD_PARTY_NOTICES.md` files and the 220-asset audit gate.
 
 ---
@@ -57,7 +57,7 @@ Local profiles, preferences, and logs are stored in `data/` beside the executabl
 ### Prerequisites
 
 - Windows
-- Node.js (Node 20+ / 22+ with built-in `node:test`) and `npm`
+- Node.js (`Node >= 22.12.0`, aligned with Electron 44, with built-in `node:test`) and `npm`
 
 ### First-Time Setup
 
@@ -78,7 +78,7 @@ npm start
 ### Testing, Compliance, Packaging & Auditing
 
 ```powershell
-# Run all 42 clean-clone unit tests (passes 100% without app/vendor/)
+# Run all 53 clean-clone unit tests (passes 100% without app/vendor/)
 npm test
 
 # Static compliance guard (verifies Git never tracks app/vendor/, research/decoded.js, or build outputs)
@@ -113,13 +113,14 @@ Earlier self-authored source prior to the v0.2 redesign is preserved at tag `pre
 
 ### Verification Status (Honest Scope)
 
-- **Verified**: All 42 clean-clone automated unit tests (`npm test`), vendor SHA256 check (`npm run test:vendor`), Git compliance guard (`npm run check:compliance`), static package audit across 220 vendor assets and 238 packaged files (`npm run audit:package`, 0 issues), and headless offscreen Electron smoke tests for both dev and slimmed portable executables (0 page errors); plus prior viewport, theme, navigation, and read-only USB connection checks.
+- **Verified**: All 53 clean-clone automated unit tests (`npm test`), vendor SHA256 check (`npm run test:vendor`), Git compliance guard (`npm run check:compliance`), static package audit across 220 vendor assets and 238 packaged files (`npm run audit:package`, 0 issues), and headless offscreen Electron smoke tests for both dev and slimmed portable executables (0 page errors); plus prior viewport, theme, navigation, and read-only USB connection checks.
 - **Not Yet Hardware-Verified Item by Item**: Physical firmware write persistence and power-cycle retention for profile library `#fileInput` whole-config imports (keymaps, lighting, actuation/RT, macros, advanced keys); physical 2.4G pairing and low-battery end-to-end hardware regression.
 
 ---
 
 ## Documentation & License
 
+- Changelog (Chinese): [CHANGELOG.md](CHANGELOG.md)
 - Architecture & Maintenance Guide (Chinese): [DEVELOPMENT.md](DEVELOPMENT.md)
 - AI Agent & Engineering Guidelines (Chinese): [AGENTS.md](AGENTS.md)
 - Third-Party Sources & Licensing Boundaries (Chinese): [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)

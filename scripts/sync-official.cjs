@@ -41,6 +41,67 @@ function createManifestEntry(urlPath, localPath, sourcePath, data) {
   };
 }
 
+function canReuseCachedAsset(data, expectedEntry) {
+  if (!Buffer.isBuffer(data) || data.length === 0) return false;
+  if (!expectedEntry || typeof expectedEntry !== 'object') return false;
+  if (typeof expectedEntry.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(expectedEntry.sha256)) return false;
+  if (typeof expectedEntry.bytes === 'number' && expectedEntry.bytes !== data.length) return false;
+  const actualHash = crypto.createHash('sha256').update(data).digest('hex');
+  return actualHash.toLowerCase() === expectedEntry.sha256.toLowerCase();
+}
+
+function validateFetchedResponse(urlPath, response, data, origin = ORIGIN) {
+  if (!response || !response.ok) {
+    throw new Error('HTTP ' + (response ? response.status : 'unknown'));
+  }
+  if (typeof response.url === 'string' && response.url) {
+    let finalUrl;
+    try {
+      finalUrl = new URL(response.url);
+    } catch {
+      throw new Error('Malformed final response URL');
+    }
+    if (finalUrl.origin !== origin) {
+      throw new Error(`Unexpected cross-origin redirect: ${finalUrl.origin}`);
+    }
+  }
+  if (!Buffer.isBuffer(data) || data.length === 0) {
+    throw new Error('Empty response body (0 bytes)');
+  }
+  const isHtmlPath = /\.html?$/i.test(urlPath) || urlPath === '/thunder68' || urlPath === '/thunder68/';
+  const contentType = response.headers?.get ? (response.headers.get('content-type') || '') : '';
+  if (!isHtmlPath && /text\/html/i.test(contentType)) {
+    throw new Error('HTML fallback, missing asset');
+  }
+}
+
+async function writeJsonAtomic(filePath, data) {
+  await fs.mkdir(path.dirname(filePath), {recursive: true});
+  const rand = crypto.randomBytes(6).toString('hex');
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.${rand}.tmp`;
+  let renamed = false;
+  try {
+    await fs.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf8');
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        await fs.rename(tmpPath, filePath);
+        renamed = true;
+        return;
+      } catch (error) {
+        const transient = error && ['EPERM', 'EBUSY', 'EACCES'].includes(error.code);
+        if (!transient || attempt === 3) throw error;
+        await new Promise(resolve => setTimeout(resolve, 25 * (attempt + 1)));
+      }
+    }
+  } finally {
+    if (!renamed) {
+      try {
+        await fs.unlink(tmpPath);
+      } catch {}
+    }
+  }
+}
+
 function planStaleFiles(existingFiles, expectedFiles) {
   const expectedSet = new Set(expectedFiles.map(file => path.resolve(file).toLowerCase()));
   return existingFiles.filter(file => !expectedSet.has(path.resolve(file).toLowerCase()));
@@ -82,11 +143,27 @@ async function pruneEmptyDirs(dir, stopAt) {
   if (!remaining.length) await fs.rmdir(dir);
 }
 
-async function runSync({root = DEFAULT_ROOT, force = false} = {}) {
+async function runSync({root = DEFAULT_ROOT, force = false, fetchImpl = fetch} = {}) {
   const discovered = new Set();
   const failed = [];
   const manifest = [];
   const expectedLocalFiles = [];
+  const prevManifestByPath = new Map();
+
+  if (!force) {
+    try {
+      const prevRaw = JSON.parse(await fs.readFile(path.join(root, 'manifest.json'), 'utf8'));
+      if (Array.isArray(prevRaw?.files)) {
+        for (const entry of prevRaw.files) {
+          if (entry && typeof entry.path === 'string') {
+            prevManifestByPath.set(entry.path, entry);
+          }
+        }
+      }
+    } catch {
+      // No valid prior manifest -> every asset will be fetched freshly.
+    }
+  }
 
   async function download(urlPath) {
     const local = validateVendorPath(root, urlPath);
@@ -108,29 +185,35 @@ async function runSync({root = DEFAULT_ROOT, force = false} = {}) {
         let data;
         let sourcePath = urlPath;
         if (!force) {
+          const prevEntry = prevManifestByPath.get(urlPath);
+          let cached = null;
           try {
-            data = await fs.readFile(local);
+            cached = await fs.readFile(local);
           } catch {
             // Earlier captures stored percent-encoded filenames. Migrate their bytes.
             if (localPath !== urlPath) {
               const legacyPath = validateVendorPath(root, encodeURI(urlPath));
               if (legacyPath) {
-                try { data = await fs.readFile(legacyPath); } catch {}
+                try { cached = await fs.readFile(legacyPath); } catch {}
               }
+            }
+          }
+          if (canReuseCachedAsset(cached, prevEntry)) {
+            data = cached;
+            if (typeof prevEntry.sourcePath === 'string' && prevEntry.sourcePath) {
+              sourcePath = prevEntry.sourcePath;
             }
           }
         }
         if (!data) {
-          let response = await fetch(ORIGIN + urlPath, {signal: AbortSignal.timeout(30000)});
+          let response = await fetchImpl(ORIGIN + urlPath, {signal: AbortSignal.timeout(30000)});
           if (response.status === 404 && urlPath.startsWith('/thunder68/thunder68/')) {
             sourcePath = urlPath.replace('/thunder68/thunder68/', '/thunder68/');
-            response = await fetch(ORIGIN + sourcePath, {signal: AbortSignal.timeout(30000)});
+            response = await fetchImpl(ORIGIN + sourcePath, {signal: AbortSignal.timeout(30000)});
           }
           if (!response.ok) throw new Error('HTTP ' + response.status);
           data = Buffer.from(await response.arrayBuffer());
-          if (/\.(png|svg|woff2?|ttf|json)$/i.test(urlPath) && /text\/html/i.test(response.headers.get('content-type') || '')) {
-            throw new Error('HTML fallback, missing asset');
-          }
+          validateFetchedResponse(urlPath, response, data, ORIGIN);
         }
         await fs.mkdir(path.dirname(local), {recursive: true});
         await fs.writeFile(local, data);
@@ -150,9 +233,10 @@ async function runSync({root = DEFAULT_ROOT, force = false} = {}) {
   }
 
   await fs.mkdir(root, {recursive: true});
-  const response = await fetch(ORIGIN + '/thunder68', {signal: AbortSignal.timeout(30000)});
+  const response = await fetchImpl(ORIGIN + '/thunder68', {signal: AbortSignal.timeout(30000)});
   if (!response.ok) throw new Error('Homepage HTTP ' + response.status);
   const htmlBuffer = Buffer.from(await response.arrayBuffer());
+  validateFetchedResponse('/thunder68/index.html', response, htmlBuffer, ORIGIN);
   const html = htmlBuffer.toString('utf8');
   const indexLocal = validateVendorPath(root, '/thunder68/index.html');
   await fs.mkdir(path.dirname(indexLocal), {recursive: true});
@@ -190,15 +274,12 @@ async function runSync({root = DEFAULT_ROOT, force = false} = {}) {
     await pruneEmptyDirs(thunderDir, thunderDir);
   }
 
-  await fs.writeFile(
-    path.join(root, 'manifest.json'),
-    JSON.stringify({
-      source: ORIGIN + '/thunder68',
-      capturedAt: new Date().toISOString(),
-      files: manifest,
-      failed
-    }, null, 2)
-  );
+  await writeJsonAtomic(path.join(root, 'manifest.json'), {
+    source: ORIGIN + '/thunder68',
+    capturedAt: new Date().toISOString(),
+    files: manifest,
+    failed
+  });
   console.log(JSON.stringify({downloaded: manifest.length, failed, removedStale: removedStale.length}, null, 2));
   if (failed.length) process.exitCode = 1;
 }
@@ -215,6 +296,9 @@ module.exports = {
   ORIGIN,
   discoverAssetPaths,
   createManifestEntry,
+  canReuseCachedAsset,
+  validateFetchedResponse,
+  writeJsonAtomic,
   planStaleFiles,
   validateVendorPath,
   runSync

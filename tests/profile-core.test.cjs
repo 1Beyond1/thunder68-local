@@ -13,8 +13,8 @@ const {
 } = require('../app/local-core.cjs');
 
 function makeValidConfig(overrides = {}) {
-  const keyValues = Array.from({length: 68}, (_, i) => ({
-    id: i === 0 ? 'W' : i === 1 ? 'A' : i === 2 ? 'S' : i === 3 ? 'D' : `K${i}`,
+  const keyValues = profileCore.OFFICIAL_THUNDER68_KEY_IDS.map(id => ({
+    id,
     travelValue: 1.5,
     isRTEnabled: false,
     sensitivity: 0.5,
@@ -35,6 +35,7 @@ function makeValidConfig(overrides = {}) {
     superkeys: {mappingData: {}, socdKeys: [], endKeys: [], tglKeys: [], mtKeys: [], mptKeys: [], dskKeys: []},
     settings: {
       sleeptime: 60,
+      game_disable_list: [false, false, false, false, false, false, false, false],
       rate: 1000,
       deviceSN: 'SECRET_SN_123',
       batteryInfo: '50',
@@ -85,25 +86,27 @@ test('validateProfileConfig enforces 68-key count, uniqueness, and travel/RT/lig
 
   // Official firmware readback sets null (or 0) sensitivity on keys with RT disabled (e.g. ArrowR in game presets)
   const gamePresetReadback = makeValidConfig({settings: {sleeptime: 60, rate: 8000}});
-  gamePresetReadback.keyValues[0].isRTEnabled = true;
-  gamePresetReadback.keyValues[0].travelValue = 0.2;
-  gamePresetReadback.keyValues[0].sensitivity = 0.02;
-  gamePresetReadback.keyValues[0].triggerSensitivity = null;
-  gamePresetReadback.keyValues[0].resetSensitivity = null;
-  gamePresetReadback.keyValues[4].id = 'ArrowR';
-  gamePresetReadback.keyValues[4].isRTEnabled = false;
-  gamePresetReadback.keyValues[4].sensitivity = null;
-  gamePresetReadback.keyValues[4].triggerSensitivity = null;
-  gamePresetReadback.keyValues[4].resetSensitivity = null;
-  gamePresetReadback.keyValues[5].id = 'ArrowL';
-  gamePresetReadback.keyValues[5].isRTEnabled = false;
-  gamePresetReadback.keyValues[5].sensitivity = 0;
-  gamePresetReadback.keyValues[5].triggerSensitivity = 0;
-  gamePresetReadback.keyValues[5].resetSensitivity = 0;
+  const wKey = gamePresetReadback.keyValues.find(k => k.id === 'W');
+  const arrowR = gamePresetReadback.keyValues.find(k => k.id === 'ArrowR');
+  const arrowL = gamePresetReadback.keyValues.find(k => k.id === 'ArrowL');
+  wKey.isRTEnabled = true;
+  wKey.travelValue = 0.2;
+  wKey.sensitivity = 0.02;
+  wKey.triggerSensitivity = null;
+  wKey.resetSensitivity = null;
+  arrowR.isRTEnabled = false;
+  arrowR.sensitivity = null;
+  arrowR.triggerSensitivity = null;
+  arrowR.resetSensitivity = null;
+  arrowL.isRTEnabled = false;
+  arrowL.sensitivity = 0;
+  arrowL.triggerSensitivity = 0;
+  arrowL.resetSensitivity = 0;
   const sanitizedPreset = profileCore.sanitizeProfileConfig(gamePresetReadback);
-  assert.equal(sanitizedPreset.keyValues[4].sensitivity, null);
-  assert.equal(sanitizedPreset.keyValues[4].triggerSensitivity, null);
-  assert.equal(sanitizedPreset.keyValues[4].resetSensitivity, null);
+  const sanitizedArrowR = sanitizedPreset.keyValues.find(k => k.id === 'ArrowR');
+  assert.equal(sanitizedArrowR.sensitivity, null);
+  assert.equal(sanitizedArrowR.triggerSensitivity, null);
+  assert.equal(sanitizedArrowR.resetSensitivity, null);
   assert.equal(sanitizedPreset.settings.rate, 8000);
   const presetValidation = profileCore.validateProfileConfig(sanitizedPreset);
   assert.equal(presetValidation.valid, true);
@@ -116,6 +119,103 @@ test('validateProfileConfig enforces 68-key count, uniqueness, and travel/RT/lig
   const badLight = makeValidConfig();
   badLight.lightness.brightness = 150;
   assert.equal(profileCore.validateProfileConfig(badLight).valid, false);
+});
+
+test('P0-1 anti-brick validation rejects foreign key IDs, invalid superkeys/macros, and non-numeric lightness', () => {
+  assert.equal(profileCore.OFFICIAL_THUNDER68_KEY_IDS.length, 68);
+  assert.equal(new Set(profileCore.OFFICIAL_THUNDER68_KEY_IDS).size, 68);
+
+  // Unknown key ID in keyValues
+  const badKeyVal = makeValidConfig();
+  badKeyVal.keyValues[0].id = 'F13';
+  const resBadKey = profileCore.validateProfileConfig(badKeyVal);
+  assert.equal(resBadKey.valid, false);
+  assert.match(resBadKey.errors.join(' '), /F13/);
+
+  // Unknown key ID and invalid uid in buttonMap
+  const badButtonMap = makeValidConfig();
+  badButtonMap.buttonMap.mappingData[0].CapsLock = {uid: '00 29', value: 'Esc'}; // should be "Caps Lock"
+  badButtonMap.buttonMap.mappingData[1]['Caps Lock'] = {uid: 'not-hex', value: 'Esc'};
+  const resBadMap = profileCore.validateProfileConfig(badButtonMap);
+  assert.equal(resBadMap.valid, false);
+  assert.ok(resBadMap.errors.length >= 2);
+
+  // Invalid superkeys references and substructures
+  const badSuper = makeValidConfig();
+  badSuper.superkeys.socdKeys.push({keyboard: ['A'], keys: ['BAD_KEY'], behaviorMode: 1, socdTravelValue: 0.2});
+  badSuper.superkeys.mtKeys.push({keyboard: ['W'], originalKeys: ['W'], sliderValue: 'bad'});
+  badSuper.superkeys.dskKeys.push({keyboard: ['W'], originalKeys: ['W'], rowBinary: ['101', '00000000', '00000000', '00000000']});
+  const resBadSuper = profileCore.validateProfileConfig(badSuper);
+  assert.equal(resBadSuper.valid, false);
+  assert.ok(resBadSuper.errors.length >= 3);
+
+  // Valid superkeys pass
+  const goodSuper = makeValidConfig();
+  goodSuper.superkeys.socdKeys.push({keyboard: ['A'], keys: ['D'], behaviorMode: 1, socdTravelValue: 0.2});
+  goodSuper.superkeys.mtKeys.push({keyboard: ['Caps Lock'], originalKeys: ['Esc', 'Ctrl'], sliderValue: '200'});
+  goodSuper.superkeys.dskKeys.push({keyboard: ['Spacebar'], originalKeys: ['Space'], rowBinary: ['00000001', '00000000', '00000000', '00000000']});
+  const cleanGoodSuper = profileCore.sanitizeProfileConfig(goodSuper);
+  assert.equal(cleanGoodSuper.superkeys.mtKeys[0].sliderValue, 200);
+  assert.equal(profileCore.validateProfileConfig(cleanGoodSuper).valid, true);
+
+  // Invalid macro action
+  const badMacro = makeValidConfig();
+  badMacro.macroMap.defaultMacros[0].actionList.push({code: '', isDown: 'yes', duration: -5});
+  assert.equal(profileCore.validateProfileConfig(badMacro).valid, false);
+
+  // Lightness numeric normalization: numeric strings coerce to Number; NaN/empty/float effectId rejected
+  const stringLight = makeValidConfig();
+  stringLight.lightness.effectId = '10';
+  stringLight.lightness.brightness = '80';
+  stringLight.lightness.speed = '40';
+  const cleanLight = profileCore.sanitizeProfileConfig(stringLight);
+  assert.strictEqual(cleanLight.lightness.effectId, 10);
+  assert.strictEqual(cleanLight.lightness.brightness, 80);
+  assert.strictEqual(cleanLight.lightness.speed, 40);
+  assert.equal(profileCore.validateProfileConfig(cleanLight).valid, true);
+
+  const nanLight = makeValidConfig();
+  nanLight.lightness.effectId = 'not-a-num';
+  nanLight.lightness.brightness = '';
+  nanLight.lightness.speed = null;
+  const cleanNanLight = profileCore.sanitizeProfileConfig(nanLight);
+  assert.equal(Number.isNaN(cleanNanLight.lightness.effectId), true);
+  assert.equal(profileCore.validateProfileConfig(cleanNanLight).valid, false);
+
+  const floatEffect = makeValidConfig();
+  floatEffect.lightness.effectId = 9.5;
+  assert.equal(profileCore.validateProfileConfig(floatEffect).valid, false);
+});
+
+test('P0-2 evaluateProfileApplyState separates confirmed success, timeout warning, and error/disconnect', () => {
+  // Pending while mask still busy
+  assert.equal(
+    profileCore.evaluateProfileApplyState({elapsedMs: 1200, sawMask: true, busy: true, sentDelta: 50, deviceOpened: true}).done,
+    false
+  );
+  // Confirmed success only when mask toggled, unlocked, packets sent, no errors, still connected
+  const ok = profileCore.evaluateProfileApplyState({elapsedMs: 1500, sawMask: true, busy: false, sentDelta: 85, deviceOpened: true});
+  assert.deepEqual(ok, {done: true, outcome: 'success', reason: 'confirmed'});
+
+  // Timeout while mask stays busy -> warning (NEVER success!)
+  const timeout = profileCore.evaluateProfileApplyState({elapsedMs: 20050, sawMask: true, busy: true, sentDelta: 40, deviceOpened: true});
+  assert.deepEqual(timeout, {done: true, outcome: 'warning', reason: 'timeout-unconfirmed'});
+
+  // Packets sent without observing mask after 6s -> warning (NEVER success!)
+  const noMaskWarn = profileCore.evaluateProfileApplyState({elapsedMs: 6200, sawMask: false, busy: false, sentDelta: 12, deviceOpened: true});
+  assert.deepEqual(noMaskWarn, {done: true, outcome: 'warning', reason: 'timeout-unconfirmed'});
+
+  // Disconnect -> error
+  const disc = profileCore.evaluateProfileApplyState({elapsedMs: 900, sawMask: true, busy: true, sentDelta: 20, deviceOpened: false});
+  assert.deepEqual(disc, {done: true, outcome: 'error', reason: 'disconnected'});
+
+  // HID send error -> error
+  const err = profileCore.evaluateProfileApplyState({elapsedMs: 500, sawMask: true, busy: true, sentDelta: 10, deviceOpened: true, sendError: 'Transfer failed'});
+  assert.deepEqual(err, {done: true, outcome: 'error', reason: 'hid-send-error'});
+
+  // No packets sent and no mask after 3.5s -> error
+  const stalled = profileCore.evaluateProfileApplyState({elapsedMs: 3600, sawMask: false, busy: false, sentDelta: 0, deviceOpened: true});
+  assert.deepEqual(stalled, {done: true, outcome: 'error', reason: 'no-write-started'});
 });
 
 test('buildOfficialImportPayload restores safe runtime defaults and preserves live hardware telemetry', () => {
@@ -133,7 +233,7 @@ test('buildOfficialImportPayload restores safe runtime defaults and preserves li
   const sanitized = profileCore.sanitizeProfileConfig(makeValidConfig());
   const payload = profileCore.buildOfficialImportPayload(sanitized, live);
 
-  assert.equal(payload.mask, false);
+  assert.equal(payload.mask, true);
   assert.deepEqual(payload.mapPendingKey, []);
   assert.deepEqual(payload.calibrationMap, {keyLogs: [], calibrationInterval: null, calibrationData: []});
   assert.equal(payload.topMenuIndex, 2);
@@ -143,22 +243,28 @@ test('buildOfficialImportPayload restores safe runtime defaults and preserves li
   assert.equal(payload.keyValues.length, 68);
 });
 
-test('diffProfileConfigs accurately summarizes travel, RT, remap, lighting, superkey, and macro changes', () => {
+test('diffProfileConfigs accurately summarizes travel, RT, remap, lighting, superkey, macro, and settings/triggerMode changes', () => {
   const office = profileCore.sanitizeProfileConfig(makeValidConfig());
   const fps = profileCore.sanitizeProfileConfig(makeValidConfig());
 
-  fps.keyValues[0].travelValue = 0.1; // W
-  fps.keyValues[0].isRTEnabled = true;
-  fps.keyValues[0].sensitivity = 0.02;
-  fps.keyValues[1].travelValue = 0.1; // A
-  fps.keyValues[1].isRTEnabled = true;
-  fps.keyValues[1].isIndependentSensitivity = true;
-  fps.keyValues[1].triggerSensitivity = 0.04;
-  fps.keyValues[1].resetSensitivity = 0.08;
-  fps.buttonMap.mappingData[0].CapsLock = {uid: '00 29', value: 'Esc'};
+  const wFps = fps.keyValues.find(k => k.id === 'W');
+  const aFps = fps.keyValues.find(k => k.id === 'A');
+  wFps.travelValue = 0.1; // W
+  wFps.isRTEnabled = true;
+  wFps.sensitivity = 0.02;
+  aFps.travelValue = 0.1; // A
+  aFps.isRTEnabled = true;
+  aFps.isIndependentSensitivity = true;
+  aFps.triggerSensitivity = 0.04;
+  aFps.resetSensitivity = 0.08;
+  fps.buttonMap.mappingData[0]['Caps Lock'] = {uid: '00 29', value: 'Esc'};
   fps.lightness.brightness = 40;
   fps.superkeys.socdKeys.push({keyboard: ['A'], keys: ['D'], behaviorMode: 1, socdTravelValue: 0.2});
   fps.macroMap.defaultMacros[0].actionList.push({code: 'KeyA', isDown: true, duration: 10});
+  fps.settings.rate = 8000;
+  fps.settings.sleeptime = 30;
+  fps.settings.game_disable_list = [true, false, false, false, false, false, false, false];
+  fps.triggerMode.triggerIndex = 1;
 
   const diff = profileCore.diffProfileConfigs(office, fps);
   assert.equal(diff.hasChanges, true);
@@ -168,9 +274,11 @@ test('diffProfileConfigs accurately summarizes travel, RT, remap, lighting, supe
   assert.equal(diff.lightingChanges.length, 1);
   assert.equal(diff.superkeyChanges.length, 1);
   assert.equal(diff.macroChanges.length, 1);
+  assert.equal(diff.settingsChanges.length, 4);
   assert.match(diff.summaryText, /触发行程 2 键/);
   assert.match(diff.summaryText, /快速触发 RT 2 键/);
   assert.match(diff.summaryText, /改键 1 处/);
+  assert.match(diff.summaryText, /系统\/触发模式 4 项/);
 
   const same = profileCore.diffProfileConfigs(office, office);
   assert.equal(same.hasChanges, false);
